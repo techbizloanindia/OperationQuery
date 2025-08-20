@@ -1,0 +1,809 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import ApprovalSidebar from './ApprovalSidebar';
+import { useAuth } from '@/contexts/AuthContext';
+import { 
+  Filter, 
+  Search, 
+  MoreVertical, 
+  CheckCircle, 
+  X, 
+  Calendar,
+  User,
+  DollarSign,
+  Clock,
+  AlertTriangle,
+  ArrowUp,
+  Pause,
+  HandHeart,
+  MessageSquare
+} from 'lucide-react';
+import type { ApprovalRequest, ApprovalFilter } from '@/types/approval';
+
+const PendingApprovals: React.FC = () => {
+  const { user } = useAuth(); // Get current user for auto-populating approver name
+  const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [filter, setFilter] = useState<ApprovalFilter>({});
+  const [pendingRequests, setPendingRequests] = useState<ApprovalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ pending: 0, urgent: 0 });
+  const [processing, setProcessing] = useState<string[]>([]);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [selectedAction, setSelectedAction] = useState<'approve' | 'reject'>('approve');
+  const [actionComment, setActionComment] = useState('');
+  const [selectedRequestForAction, setSelectedRequestForAction] = useState<any>(null);
+  const [approverName, setApproverName] = useState('');
+  
+  // New state for showing all remarks modal
+  const [showRemarksModal, setShowRemarksModal] = useState(false);
+  const [selectedRequestForRemarks, setSelectedRequestForRemarks] = useState<any>(null);
+  const [allRemarks, setAllRemarks] = useState<any[]>([]);
+  
+  // Success message state
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // Auto-populate approver name from user context
+  useEffect(() => {
+    if (user?.name) {
+      setApproverName(user.name);
+    } else {
+      setApproverName('Approval Team Member');
+    }
+  }, [user]);
+
+  // Fetch real-time pending approvals with polling every 10 seconds for real-time updates
+  const fetchPendingApprovals = async () => {
+    try {
+      const response = await fetch('/api/approvals?status=pending');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        const pendingApprovals = result.data.approvals.map((approval: any) => ({
+          ...approval,
+          submittedAt: new Date(approval.submittedAt),
+          dueDate: approval.dueDate ? new Date(approval.dueDate) : undefined
+        }));
+        
+        console.log('📋 Fetched pending approvals:', pendingApprovals);
+        setPendingRequests(pendingApprovals);
+        
+        // Calculate stats
+        const urgentCount = pendingApprovals.filter((approval: any) => 
+          approval.priority === 'urgent'
+        ).length;
+        
+        setStats({
+          pending: pendingApprovals.length,
+          urgent: urgentCount
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching pending approvals:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingApprovals();
+    
+    // Set up polling for real-time updates every 10 seconds for more responsive updates
+    const interval = setInterval(fetchPendingApprovals, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSelectRequest = (requestId: string) => {
+    setSelectedRequests(prev => 
+      prev.includes(requestId)
+        ? prev.filter(id => id !== requestId)
+        : [...prev, requestId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedRequests.length === pendingRequests.length) {
+      setSelectedRequests([]);
+    } else {
+      setSelectedRequests(pendingRequests.map(req => req.id));
+    }
+  };
+
+  const handleBulkApprove = () => {
+    console.log('Bulk approve:', selectedRequests);
+    // Implement bulk approve logic
+    setSelectedRequests([]);
+    setShowBulkActions(false);
+  };
+
+  const handleBulkReject = () => {
+    console.log('Bulk reject:', selectedRequests);
+    // Implement bulk reject logic
+    setSelectedRequests([]);
+    setShowBulkActions(false);
+  };
+
+  // Enhanced action handlers for three-stage approval process
+  const handleApproveAction = (request: any) => {
+    setSelectedRequestForAction(request);
+    setSelectedAction('approve');
+    setActionComment('');
+    setShowActionModal(true);
+  };
+
+  const handleRejectAction = (request: any) => {
+    setSelectedRequestForAction(request);
+    setSelectedAction('reject');
+    setActionComment('');
+    setShowActionModal(true);
+  };
+
+  // New handler to show all remarks for a query
+  const handleShowAllRemarks = async (request: any) => {
+    setSelectedRequestForRemarks(request);
+    setShowRemarksModal(true);
+    
+    // Fetch all remarks/comments for this query
+    try {
+      const remarks = [];
+      
+      // Add original operations request remarks
+      if (request.description) {
+        remarks.push({
+          id: 'original',
+          type: 'Operations Request',
+          content: request.description,
+          author: request.requester?.name || 'Operations Team',
+          timestamp: request.submittedAt,
+          team: 'Operations'
+        });
+      }
+      
+      // If this is a query-action type, fetch additional query history
+      if (request.type === 'query-action' && request.queryId) {
+        const historyResponse = await fetch(`/api/query-actions?queryId=${request.queryId}&type=messages`);
+        if (historyResponse.ok) {
+          const historyResult = await historyResponse.json();
+          const messages = historyResult.data || [];
+          
+          // Add query messages as remarks
+          messages.forEach((msg: any, index: number) => {
+            remarks.push({
+              id: `msg-${index}`,
+              type: msg.senderRole || 'Team Message',
+              content: msg.message,
+              author: msg.sender || 'Team Member',
+              timestamp: msg.timestamp,
+              team: msg.team || msg.senderRole || 'Unknown'
+            });
+          });
+        }
+      }
+      
+      // Add any existing approval comments
+      if (request.approverComment) {
+        remarks.push({
+          id: 'approval-comment',
+          type: 'Approval Comment',
+          content: request.approverComment,
+          author: request.approver?.name || 'Approval Team',
+          timestamp: request.approvedAt || request.rejectedAt,
+          team: 'Approval'
+        });
+      }
+      
+      // Sort by timestamp
+      remarks.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      setAllRemarks(remarks);
+    } catch (error) {
+      console.error('Error fetching remarks:', error);
+      // Show basic remarks from the request
+      setAllRemarks([{
+        id: 'basic',
+        type: 'Request Description',
+        content: request.description || 'No remarks available',
+        author: request.requester?.name || 'Team Member',
+        timestamp: request.submittedAt,
+        team: 'Request'
+      }]);
+    }
+  };
+
+  const processApprovalAction = async (action: 'approve' | 'reject', requestIds: string[], comment?: string, approver?: string) => {
+    setProcessing(prev => [...prev, ...requestIds]);
+    
+    try {
+      const response = await fetch('/api/approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          requestIds,
+          comment,
+          approverName: approver || approverName
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Refresh the pending requests immediately for real-time updates
+        await fetchPendingApprovals();
+        
+        // Clear selections
+        setSelectedRequests([]);
+        setShowBulkActions(false);
+        
+        // Show success message
+        const message = `✅ Successfully ${action === 'approve' ? 'approved' : 'rejected'} ${requestIds.length} request(s)!`;
+        setSuccessMessage(message);
+        setShowSuccessMessage(true);
+        
+        // Auto-hide success message after 5 seconds
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+          setTimeout(() => setSuccessMessage(null), 300); // Allow fade out animation
+        }, 5000);
+        
+        console.log(`✅ ${action === 'approve' ? 'Approved' : 'Rejected'} ${requestIds.length} request(s) successfully`);
+      } else {
+        console.error('Approval action failed:', result.error);
+      }
+    } catch (error) {
+      console.error('Error processing approval action:', error);
+    } finally {
+      setProcessing(prev => prev.filter(id => !requestIds.includes(id)));
+    }
+  };
+
+  const handleActionSubmit = async () => {
+    if (!selectedRequestForAction) return;
+    
+    await processApprovalAction(
+      selectedAction, 
+      [selectedRequestForAction.id], 
+      actionComment.trim() || undefined, 
+      approverName
+    );
+    
+    // Reset modal
+    setShowActionModal(false);
+    setActionComment('');
+    setSelectedRequestForAction(null);
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    const styles = {
+      low: 'bg-gray-100 text-gray-800 border-gray-200',
+      medium: 'bg-blue-100 text-blue-800 border-blue-200',
+      high: 'bg-orange-100 text-orange-800 border-orange-200',
+      urgent: 'bg-red-100 text-red-800 border-red-200'
+    };
+    
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${styles[priority as keyof typeof styles] || styles.medium}`}>
+        {priority.toUpperCase()}
+      </span>
+    );
+  };
+
+  // Get action-specific badge and icon for proposed actions
+  const getProposedActionBadge = (proposedAction: string) => {
+    const actionStyles = {
+      'approve': { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200', icon: CheckCircle },
+      'deferral': { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-200', icon: Pause },
+      'otc': { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-200', icon: HandHeart }
+    };
+    
+    const style = actionStyles[proposedAction as keyof typeof actionStyles] || actionStyles.approve;
+    const IconComponent = style.icon;
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border ${style.bg} ${style.text} ${style.border}`}>
+        <IconComponent className="w-3 h-3" />
+        {proposedAction.toUpperCase()}
+      </span>
+    );
+  };
+
+  const getSLAIndicator = (slaStatus: string) => {
+    const styles = {
+      'on-time': 'text-green-600 bg-green-100',
+      'due-soon': 'text-yellow-600 bg-yellow-100',
+      'overdue': 'text-red-600 bg-red-100'
+    };
+    
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[slaStatus as keyof typeof styles] || styles['on-time']}`}>
+        {slaStatus.replace('-', ' ').toUpperCase()}
+      </span>
+    );
+  };
+
+  const formatCurrency = (amount?: number, currency?: string) => {
+    if (!amount) return '-';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD'
+    }).format(amount);
+  };
+
+  const formatDate = (date: Date) => {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
+  return (
+    <div className="flex bg-gray-50 min-h-screen">
+      <ApprovalSidebar pendingCount={stats.pending} urgentCount={stats.urgent} />
+      
+      {/* Main Content */}
+      <div className="ml-64 flex-1 p-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Pending Approvals</h1>
+              <p className="text-gray-600 mt-1">Review and process pending approval requests</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600">
+                {loading ? 'Loading...' : `${pendingRequests.length} pending requests`}
+              </span>
+              {loading && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Success Message */}
+        {showSuccessMessage && successMessage && (
+          <div className={`mb-6 p-4 rounded-lg border transition-all duration-300 ${
+            showSuccessMessage 
+              ? 'bg-green-50 border-green-200 opacity-100 translate-y-0' 
+              : 'opacity-0 -translate-y-2'
+          }`}>
+            <div className="flex items-center space-x-3">
+              <div className="flex-shrink-0">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-green-800 font-medium">{successMessage}</p>
+                <p className="text-green-600 text-sm mt-1">
+                  Query status has been updated and moved to Operations Dashboard → Query Resolved section.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSuccessMessage(false);
+                  setTimeout(() => setSuccessMessage(null), 300);
+                }}
+                className="flex-shrink-0 text-green-500 hover:text-green-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Real-time Recent Approvals Activity */}
+        <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span>Recent Approvals Activity</span>
+            </h2>
+            <span className="text-xs text-gray-500">Real-time updates every 10 seconds</span>
+          </div>
+          
+          <div className="space-y-3 max-h-32 overflow-y-auto">
+            {pendingRequests.slice(0, 3).map((request) => (
+              <div key={`activity-${request.id}`} className="flex items-center space-x-3 p-2 bg-gray-50 rounded-lg">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2">
+                    <p className="text-sm font-medium text-gray-900">{request.requestId}</p>
+                    {(request as any).proposedAction && getProposedActionBadge((request as any).proposedAction)}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Awaiting approval from {approverName} • {formatDate(request.submittedAt)}
+                  </p>
+                </div>
+                <div className="text-xs text-gray-400">
+                  Pending
+                </div>
+              </div>
+            ))}
+            {pendingRequests.length === 0 && (
+              <div className="text-center py-4 text-gray-500 text-sm">
+                No recent activity. All caught up! 🎉
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Filters and Search */}
+        <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search requests..."
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64 text-gray-900 bg-white"
+                />
+              </div>
+              
+              <select className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white">
+                <option value="">All Types</option>
+                <option value="loan">Loan</option>
+                <option value="expense">Expense</option>
+                <option value="policy">Policy</option>
+                <option value="credit">Credit</option>
+                <option value="budget">Budget</option>
+              </select>
+
+              <select className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white">
+                <option value="">All Priorities</option>
+                <option value="urgent">Urgent</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                <Filter className="w-4 h-4" />
+                <span>More Filters</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Bulk Actions */}
+        {selectedRequests.length > 0 && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-blue-800">
+                {selectedRequests.length} request(s) selected
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleBulkApprove}
+                  className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Bulk Approve</span>
+                </button>
+                <button
+                  onClick={handleBulkReject}
+                  className="flex items-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Bulk Reject</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Requests Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedRequests.length === pendingRequests.length}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proposed Action</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requester</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pendingRequests.map((request) => (
+                  <tr key={request.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedRequests.includes(request.id)}
+                        onChange={() => handleSelectRequest(request.id)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <span 
+                              onClick={() => handleShowAllRemarks(request)}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer hover:underline"
+                              title="Click to view all remarks and history"
+                            >
+                              {request.requestId}
+                            </span>
+                            <span className="capitalize text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                              {request.type}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-900 font-medium mt-1">{request.title}</p>
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{request.description}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center">
+                        {(request as any).proposedAction ? 
+                          getProposedActionBadge((request as any).proposedAction) :
+                          <span className="text-xs text-gray-400">No action specified</span>
+                        }
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-gray-600" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{request.requester.name}</div>
+                          <div className="text-xs text-gray-500">{request.requester.department}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getPriorityBadge(request.priority)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-1">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-900">
+                          {request.dueDate ? formatDate(request.dueDate) : '-'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-2">
+                        {/* Action-specific approve button */}
+                        <button 
+                          onClick={() => handleApproveAction(request)}
+                          disabled={processing.includes(request.id)}
+                          className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                        >
+                          {processing.includes(request.id) ? (
+                            <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <CheckCircle className="w-3 h-3" />
+                          )}
+                          <span>
+                            {(request as any).proposedAction 
+                              ? `Approve ${(request as any).proposedAction.charAt(0).toUpperCase() + (request as any).proposedAction.slice(1)}`
+                              : 'Approve'
+                            }
+                          </span>
+                        </button>
+                        
+                        {/* Reject button with approver name */}
+                        <button 
+                          onClick={() => handleRejectAction(request)}
+                          disabled={processing.includes(request.id)}
+                          className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* All Remarks Modal */}
+        {showRemarksModal && selectedRequestForRemarks && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  All Remarks & History - {selectedRequestForRemarks.requestId}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowRemarksModal(false);
+                    setSelectedRequestForRemarks(null);
+                    setAllRemarks([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              {/* Request Summary */}
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <h4 className="font-semibold text-gray-900">Request Summary:</h4>
+                  {(selectedRequestForRemarks as any).proposedAction && 
+                    getProposedActionBadge((selectedRequestForRemarks as any).proposedAction)
+                  }
+                </div>
+                <p className="text-sm text-gray-700">{selectedRequestForRemarks.title}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Submitted by: {selectedRequestForRemarks.requester?.name} • 
+                  Team: {selectedRequestForRemarks.requester?.department} • 
+                  Date: {formatDate(selectedRequestForRemarks.submittedAt)}
+                </p>
+              </div>
+              
+              {/* All Remarks Timeline */}
+              <div className="overflow-y-auto max-h-96">
+                <div className="space-y-4">
+                  {allRemarks.length > 0 ? (
+                    allRemarks.map((remark, index) => (
+                      <div key={remark.id} className="flex space-x-3">
+                        <div className="flex-shrink-0">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold ${
+                            remark.team === 'Operations' ? 'bg-blue-500' :
+                            remark.team === 'Sales' ? 'bg-green-500' :
+                            remark.team === 'Credit' ? 'bg-purple-500' :
+                            remark.team === 'Approval' ? 'bg-orange-500' :
+                            'bg-gray-500'
+                          }`}>
+                            {remark.team === 'Operations' ? 'OP' :
+                             remark.team === 'Sales' ? 'SA' :
+                             remark.team === 'Credit' ? 'CR' :
+                             remark.team === 'Approval' ? 'AP' :
+                             'TM'}
+                          </div>
+                        </div>
+                        <div className="flex-1 bg-white border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-semibold text-gray-900">{remark.author}</span>
+                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                {remark.type}
+                              </span>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {formatDate(new Date(remark.timestamp))}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{remark.content}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                      <p>No remarks available</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowRemarksModal(false);
+                    setSelectedRequestForRemarks(null);
+                    setAllRemarks([]);
+                  }}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Action Modal for Three-Stage Approval */}
+        {showActionModal && selectedRequestForAction && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-96 max-w-md">
+              <h3 className="text-lg font-semibold mb-4">
+                {selectedAction === 'approve' 
+                  ? `Approve ${(selectedRequestForAction as any).proposedAction ? (selectedRequestForAction as any).proposedAction.charAt(0).toUpperCase() + (selectedRequestForAction as any).proposedAction.slice(1) : ''} Request`
+                  : 'Reject Request'
+                }
+              </h3>
+              
+              {/* Show proposed action details */}
+              {selectedAction === 'approve' && (selectedRequestForAction as any).proposedAction && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className="text-sm font-medium text-gray-700">Proposed Action:</span>
+                    {getProposedActionBadge((selectedRequestForAction as any).proposedAction)}
+                  </div>
+                  <p className="text-xs text-gray-600">{selectedRequestForAction.description}</p>
+                </div>
+              )}
+              
+              {/* Auto-populated approver name */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Approver Name
+                </label>
+                <input
+                  type="text"
+                  value={approverName}
+                  onChange={(e) => setApproverName(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 text-gray-900"
+                  placeholder="Your name will be recorded"
+                />
+              </div>
+              
+              {/* Comments/Remarks */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {selectedAction === 'approve' ? 'Approval Comments (Optional)' : 'Rejection Reason (Required)'}
+                </label>
+                <textarea
+                  value={actionComment}
+                  onChange={(e) => setActionComment(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                  rows={4}
+                  placeholder={selectedAction === 'approve' 
+                    ? 'Add any comments about this approval...' 
+                    : 'Please provide a reason for rejection...'
+                  }
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowActionModal(false);
+                    setActionComment('');
+                    setSelectedRequestForAction(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleActionSubmit}
+                  disabled={selectedAction === 'reject' && !actionComment.trim()}
+                  className={`px-4 py-2 rounded-lg text-white ${
+                    selectedAction === 'approve' 
+                      ? 'bg-green-600 hover:bg-green-700' 
+                      : 'bg-red-600 hover:bg-red-700'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {selectedAction === 'approve' 
+                    ? `Approve ${(selectedRequestForAction as any).proposedAction ? (selectedRequestForAction as any).proposedAction.charAt(0).toUpperCase() + (selectedRequestForAction as any).proposedAction.slice(1) : 'Request'}`
+                    : `Reject with ${approverName}`
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PendingApprovals;
