@@ -24,6 +24,7 @@ const ApprovalHistory: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const itemsPerPage = 10;
 
@@ -146,18 +147,43 @@ const ApprovalHistory: React.FC = () => {
 
   return (
     <div className="flex bg-gray-50 min-h-screen">
-      <ApprovalSidebar pendingCount={12} urgentCount={3} />
+      {/* Mobile Sidebar Toggle */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="bg-white p-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50"
+        >
+          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div className={`transform transition-transform duration-300 lg:transform-none lg:block ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      } fixed lg:relative z-40 lg:z-auto`}>
+        <ApprovalSidebar pendingCount={12} urgentCount={3} />
+      </div>
       
       {/* Main Content */}
-      <div className="lg:ml-64 flex-1 p-4 lg:p-8">
+      <div className="flex-1 lg:ml-0 p-4 sm:p-6 lg:p-8 pt-16 lg:pt-8">
         {/* Header */}
-        <div className="mb-6 lg:mb-8">
+        <div className="mb-4 sm:mb-6 lg:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center space-x-3">
-              <History className="w-6 h-6 lg:w-8 lg:h-8 text-blue-600" />
-              <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Approval History</h1>
-                <p className="text-gray-600 mt-1 text-sm lg:text-base">Complete record of all approval activities</p>
+            <div className="flex items-start space-x-2 sm:space-x-3">
+              <History className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-blue-600 flex-shrink-0 mt-1 sm:mt-0" />
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900">Approval History</h1>
+                <p className="text-gray-600 mt-1 text-xs sm:text-sm lg:text-base">Complete record of all approval activities</p>
                 <div className="flex items-center space-x-4 mt-2">
                   {loading && (
                     <div className="flex items-center space-x-2">
@@ -173,18 +199,18 @@ const ApprovalHistory: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 sm:space-x-2">
               <button
                 onClick={handleRefresh}
                 disabled={loading}
-                className="flex items-center space-x-2 bg-gray-600 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg hover:bg-gray-700 transition-colors text-sm lg:text-base disabled:opacity-50"
+                className="flex items-center space-x-1 sm:space-x-2 bg-gray-600 text-white px-2 sm:px-3 py-2 lg:px-4 lg:py-2 rounded-lg hover:bg-gray-700 transition-colors text-xs sm:text-sm lg:text-base disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">Refresh</span>
               </button>
               <button
                 onClick={handleExport}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm lg:text-base"
+                className="flex items-center space-x-1 sm:space-x-2 bg-blue-600 text-white px-2 sm:px-3 py-2 lg:px-4 lg:py-2 rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm lg:text-base"
               >
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">Export History</span>
@@ -195,7 +221,7 @@ const ApprovalHistory: React.FC = () => {
         </div>
 
         {/* Filters and Search */}
-        <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="mb-4 sm:mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
           <div className="space-y-4">
             {/* Search Bar - Full Width on Mobile */}
             <div className="relative">
@@ -205,7 +231,7 @@ const ApprovalHistory: React.FC = () => {
                 placeholder="Search by ID, title, or requester..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full lg:w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full lg:w-80 pl-10 pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             
@@ -246,24 +272,24 @@ const ApprovalHistory: React.FC = () => {
         </div>
 
         {/* Results Summary */}
-        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm font-medium text-gray-800">
+        <div className="mb-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 text-xs sm:text-sm font-medium text-gray-800">
           <span>
             Showing {startIndex + 1}-{Math.min(endIndex, filteredHistory.length)} of {filteredHistory.length} records
           </span>
-          <div className="flex items-center space-x-4">
-            <span>
+          <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <span className="text-xs sm:text-sm">
               Total: <span className="text-green-700 font-semibold">{approvalHistory.filter(a => a.status === 'approved').length} approved</span>, {' '}
               <span className="text-red-700 font-semibold">{approvalHistory.filter(a => a.status === 'rejected').length} rejected</span>
             </span>
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-semibold text-green-700">Live Updates</span>
+              <div className="w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-xs sm:text-sm font-semibold text-green-700">Live Updates</span>
             </div>
           </div>
         </div>
 
-        {/* History Table - Desktop View */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        {/* History Table */}
+        <div className="bg-white rounded-lg lg:rounded-xl shadow-sm border border-gray-200">
           {/* Desktop Table */}
           <div className="hidden lg:block overflow-x-auto">
             <table className="w-full">
@@ -352,7 +378,7 @@ const ApprovalHistory: React.FC = () => {
           {/* Mobile Card View */}
           <div className="lg:hidden">
             {currentItems.map((approval) => (
-              <div key={approval.id} className="p-5 border-b-2 border-gray-300 last:border-b-0 bg-white">
+              <div key={approval.id} className="p-3 sm:p-5 border-b-2 border-gray-300 last:border-b-0 bg-white">
                 <div className="space-y-4">
                   {/* Header */}
                   <div className="flex items-start justify-between">
@@ -378,7 +404,7 @@ const ApprovalHistory: React.FC = () => {
                   </div>
 
                   {/* Details Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm bg-gray-50 p-4 rounded-lg">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm bg-gray-50 p-3 sm:p-4 rounded-lg">
                     <div className="space-y-3">
                       <div>
                         <span className="font-bold text-gray-800 text-base">Requester:</span>
@@ -435,16 +461,16 @@ const ApprovalHistory: React.FC = () => {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="px-4 lg:px-6 py-4 border-t-2 border-gray-300 bg-gray-50">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="text-base font-bold text-gray-900 text-center sm:text-left">
+            <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 border-t-2 border-gray-300 bg-gray-50">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                <div className="text-sm sm:text-base font-bold text-gray-900 text-center sm:text-left">
                   Page {currentPage} of {totalPages}
                 </div>
                 <div className="flex items-center justify-center space-x-2">
                   <button
                     onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}
-                    className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-1 px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-4 h-4" />
                     <span className="hidden sm:inline">Previous</span>
@@ -459,7 +485,7 @@ const ApprovalHistory: React.FC = () => {
                         <button
                           key={pageNum}
                           onClick={() => setCurrentPage(pageNum)}
-                          className={`px-3 py-2 text-sm rounded-lg ${
+                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm rounded-lg ${
                             pageNum === currentPage
                               ? 'bg-blue-600 text-white'
                               : 'text-gray-700 hover:bg-gray-100'
@@ -474,7 +500,7 @@ const ApprovalHistory: React.FC = () => {
                   <button
                     onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
-                    className="flex items-center space-x-1 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-1 px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="hidden sm:inline">Next</span>
                     <ChevronRight className="w-4 h-4" />
@@ -486,10 +512,10 @@ const ApprovalHistory: React.FC = () => {
 
           {/* Empty State */}
           {currentItems.length === 0 && (
-            <div className="text-center py-16 bg-gray-50">
-              <History className="w-20 h-20 text-blue-600 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">No approval history found</h3>
-              <p className="text-lg font-semibold text-gray-700">
+            <div className="text-center py-8 sm:py-12 lg:py-16 bg-gray-50">
+              <History className="w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 text-blue-600 mx-auto mb-4 sm:mb-6" />
+              <h3 className="text-base sm:text-lg font-medium text-gray-800 mb-2">No approval history found</h3>
+              <p className="text-sm text-gray-600 px-4">
                 {searchTerm || statusFilter !== 'all' || dateFilter !== 'all'
                   ? 'Try adjusting your search criteria.'
                   : 'No approvals have been processed yet.'

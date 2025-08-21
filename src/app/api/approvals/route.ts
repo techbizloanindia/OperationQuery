@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     initializeBizlnCounter();
     
     const body = await request.json();
-    const { action, requestIds, comment, approverName = 'Approval Team' } = body;
+    const { action, requestIds, comment, approverName = 'Approval Team', specificAction } = body;
 
     if (!action || !requestIds || !Array.isArray(requestIds)) {
       return NextResponse.json(
@@ -207,10 +207,11 @@ export async function POST(request: NextRequest) {
           const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://' + (request.headers.get('host') || 'localhost')}`;
           
           if (action === 'approve') {
-            // Approve the proposed action - mark query as resolved with the proposed action
-            const finalStatus = approvalRequest.proposedAction === 'approve' ? 'approved' :
-                               approvalRequest.proposedAction === 'deferral' ? 'deferred' :
-                               approvalRequest.proposedAction === 'otc' ? 'otc' : 'resolved';
+            // Determine final status based on specificAction or fallback to proposedAction
+            const actionType = specificAction || approvalRequest.proposedAction || 'approve';
+            const finalStatus = actionType === 'approve' ? 'approved' :
+                               actionType === 'deferral' ? 'deferred' :
+                               actionType === 'otc' ? 'otc' : 'resolved';
             
             const now = new Date();
             const updateData = {
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
               status: finalStatus,
               resolvedAt: now.toISOString(),
               resolvedBy: approverName,
-              resolutionReason: approvalRequest.proposedAction,
+              resolutionReason: actionType,
               assignedTo: approvalRequest.assignedTo || null,
               assignedToBranch: approvalRequest.assignedToBranch || null,
               remarks: approvalRequest.remarks || '',
@@ -229,9 +230,9 @@ export async function POST(request: NextRequest) {
               approvedBy: approverName,
               approvedAt: now.toISOString(),
               approvalDate: now.toISOString(),
-              approvalStatus: approvalRequest.proposedAction === 'approve' ? 'approved' :
-                             approvalRequest.proposedAction === 'deferral' ? 'deferral' :
-                             approvalRequest.proposedAction === 'otc' ? 'otc' : 'approved'
+              approvalStatus: actionType === 'approve' ? 'approved' :
+                             actionType === 'deferral' ? 'deferral' :
+                             actionType === 'otc' ? 'otc' : 'approved'
             };
             
             const response = await fetch(`${baseUrl}/api/queries`, {
@@ -273,7 +274,7 @@ export async function POST(request: NextRequest) {
             const approvalMessage = {
               id: `${Date.now().toString()}-${Math.random().toString(36).substring(2, 9)}`,
               queryId: approvalRequest.queryId,
-              message: `✅ Query ${statusText} by ${approverName}\n\n📝 Approval Comment: ${comment || 'No additional comments'}\n\n🕒 Approved on: ${now.toLocaleString('en-US', {
+              message: `✅ Query ${statusText} by ${approverName}\n\n📝 Approval Comment: ${comment || 'No additional comments'}\n\n🕒 ${actionType.toUpperCase()} on: ${now.toLocaleString('en-US', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
@@ -285,12 +286,13 @@ export async function POST(request: NextRequest) {
               senderRole: 'Approval Team',
               timestamp: now.toISOString(),
               team: 'Approval',
-              actionType: 'approved',
+              actionType: actionType,
               isSystemMessage: true,
               metadata: {
                 approvedBy: approverName,
                 approvalStatus: finalStatus,
-                approvalDate: now.toISOString()
+                approvalDate: now.toISOString(),
+                specificAction: actionType
               }
             };
 

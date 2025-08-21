@@ -5,6 +5,7 @@ export interface ApprovalRequest {
   type: 'loan' | 'credit' | 'expense' | 'policy' | 'budget';
   title: string;
   description: string;
+  proposedAction?: 'approve' | 'deferral' | 'otc'; // Added proposedAction field
   requester: {
     id: string;
     name: string;

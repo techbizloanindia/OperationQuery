@@ -44,6 +44,7 @@ const ApprovalReports: React.FC = () => {
   const [filteredQueries, setFilteredQueries] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [approverFilter, setApproverFilter] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Fetch real-time approval data for reports
   const fetchApprovalReportsData = async () => {
@@ -386,60 +387,90 @@ const ApprovalReports: React.FC = () => {
 
   return (
     <div className="flex bg-gray-50 min-h-screen">
-      <ApprovalSidebar />
+      {/* Mobile Sidebar Toggle */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="bg-white p-2 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50"
+        >
+          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div className={`transform transition-transform duration-300 lg:transform-none lg:block ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      } fixed lg:relative z-40 lg:z-auto`}>
+        <ApprovalSidebar />
+      </div>
       
       {/* Main Content */}
-      <div className="ml-64 flex-1 p-8">
+      <div className="flex-1 lg:ml-0 p-4 sm:p-6 lg:p-8 pt-16 lg:pt-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <div className="mb-6 lg:mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <Image 
                 src="/logo.png" 
                 alt="Bizloan Logo" 
                 width={48} 
                 height={48} 
-                className="w-12 h-12"
+                className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 flex-shrink-0"
               />
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Bizloan Approval Reports</h1>
-                <p className="text-gray-600 mt-1">Comprehensive approval analytics and reporting</p>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl lg:text-3xl font-bold text-gray-900 leading-tight">
+                  <span className="lg:hidden">Approval Reports</span>
+                  <span className="hidden lg:inline">Bizloan Approval Reports</span>
+                </h1>
+                <p className="text-xs sm:text-sm lg:text-base text-gray-600 mt-1">Comprehensive approval analytics and reporting</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               <button
                 onClick={handleGenerateReport}
                 disabled={isGenerating}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+                className="flex items-center space-x-1 sm:space-x-2 bg-blue-600 text-white px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
               >
                 {isGenerating ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 ) : (
                   <Plus className="w-4 h-4" />
                 )}
-                <span>{isGenerating ? 'Generating...' : 'Generate Report'}</span>
+                <span className="hidden sm:inline">{isGenerating ? 'Generating...' : 'Generate Report'}</span>
+                <span className="sm:hidden">{isGenerating ? '...' : 'Generate'}</span>
               </button>
               <button 
                 onClick={handleRefresh}
-                className="flex items-center space-x-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                className="flex items-center space-x-1 sm:space-x-2 bg-gray-600 text-white px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg hover:bg-gray-700 transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
-                <span>Refresh</span>
+                <span className="hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="mb-6">
-          <nav className="flex space-x-8 border-b border-gray-200">
+        <div className="mb-4 sm:mb-6">
+          <nav className="flex space-x-4 sm:space-x-8 border-b border-gray-200 overflow-x-auto">
             <button
               onClick={() => setSelectedTab('reports')}
-              className="py-4 px-1 border-b-2 font-medium text-sm transition-colors border-blue-500 text-blue-600"
+              className="py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors border-blue-500 text-blue-600 whitespace-nowrap"
             >
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1 sm:space-x-2">
                 <FileText className="w-4 h-4" />
-                <span>Generated Reports</span>
+                <span className="hidden sm:inline">Generated Reports</span>
+                <span className="sm:hidden">Reports</span>
               </div>
             </button>
           </nav>
@@ -450,41 +481,41 @@ const ApprovalReports: React.FC = () => {
         {selectedTab === 'reports' && (
           <div className="space-y-6">
             {/* Approval Summary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <CheckCircle className="h-8 w-8 text-green-600" />
+                    <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 lg:h-8 lg:w-8 text-green-600" />
                   </div>
-                  <div className="ml-5">
-                    <div className="text-sm font-medium text-gray-500">Total Approved</div>
-                    <div className="text-2xl font-bold text-gray-900">{approvedQueries.length}</div>
+                  <div className="ml-2 sm:ml-3 lg:ml-5 min-w-0">
+                    <div className="text-xs sm:text-sm font-medium text-gray-500 truncate">Total Approved</div>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{approvedQueries.length}</div>
                   </div>
                 </div>
               </div>
               
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <Users className="h-8 w-8 text-blue-600" />
+                    <Users className="h-5 w-5 sm:h-6 sm:w-6 lg:h-8 lg:w-8 text-blue-600" />
                   </div>
-                  <div className="ml-5">
-                    <div className="text-sm font-medium text-gray-500">Unique Approvers</div>
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="ml-2 sm:ml-3 lg:ml-5 min-w-0">
+                    <div className="text-xs sm:text-sm font-medium text-gray-500 truncate">Unique Approvers</div>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
                       {[...new Set(approvedQueries.map(q => q.approverName))].length}
                     </div>
                   </div>
                 </div>
               </div>
               
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <Clock className="h-8 w-8 text-yellow-600" />
+                    <Clock className="h-5 w-5 sm:h-6 sm:w-6 lg:h-8 lg:w-8 text-yellow-600" />
                   </div>
-                  <div className="ml-5">
-                    <div className="text-sm font-medium text-gray-500">Today's Approvals</div>
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="ml-2 sm:ml-3 lg:ml-5 min-w-0">
+                    <div className="text-xs sm:text-sm font-medium text-gray-500 truncate">Today's Approvals</div>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
                       {approvedQueries.filter(q => 
                         new Date(q.resolvedAt).toDateString() === new Date().toDateString()
                       ).length}
@@ -493,14 +524,14 @@ const ApprovalReports: React.FC = () => {
                 </div>
               </div>
               
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <TrendingUp className="h-8 w-8 text-purple-600" />
+                    <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 lg:h-8 lg:w-8 text-purple-600" />
                   </div>
-                  <div className="ml-5">
-                    <div className="text-sm font-medium text-gray-500">This Week</div>
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="ml-2 sm:ml-3 lg:ml-5 min-w-0">
+                    <div className="text-xs sm:text-sm font-medium text-gray-500 truncate">This Week</div>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
                       {approvedQueries.filter(q => {
                         const weekAgo = new Date();
                         weekAgo.setDate(weekAgo.getDate() - 7);
@@ -513,9 +544,9 @@ const ApprovalReports: React.FC = () => {
             </div>
 
             {/* Filters */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-3 lg:space-y-0">
+                <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
                   <div className="relative">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
@@ -523,25 +554,27 @@ const ApprovalReports: React.FC = () => {
                       placeholder="Search by approver name..."
                       value={approverFilter}
                       onChange={(e) => setApproverFilter(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                      className="w-full sm:w-auto pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
                     />
                   </div>
-                  <select 
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
-                  >
-                    <option value="">All Status</option>
-                    <option value="approved">Request Approved</option>
-                    <option value="deferred">Request Deferral</option>
-                    <option value="otc">Request OTC</option>
-                  </select>
-                  <select className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white">
-                    <option value="">All Formats</option>
-                    <option value="pdf">PDF</option>
-                    <option value="excel">Excel</option>
-                    <option value="csv">CSV</option>
-                  </select>
+                  <div className="flex space-x-2 sm:space-x-4">
+                    <select 
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="flex-1 sm:flex-none border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                    >
+                      <option value="">All Status</option>
+                      <option value="approved">Request Approved</option>
+                      <option value="deferred">Request Deferral</option>
+                      <option value="otc">Request OTC</option>
+                    </select>
+                    <select className="flex-1 sm:flex-none border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white">
+                      <option value="">All Formats</option>
+                      <option value="pdf">PDF</option>
+                      <option value="excel">Excel</option>
+                      <option value="csv">CSV</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   {(statusFilter || approverFilter) && (
@@ -550,33 +583,35 @@ const ApprovalReports: React.FC = () => {
                         setStatusFilter('');
                         setApproverFilter('');
                       }}
-                      className="text-sm text-gray-600 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100"
+                      className="text-xs sm:text-sm text-gray-600 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100"
                     >
                       Clear Filters
                     </button>
                   )}
-                  <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  <button className="flex items-center space-x-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
                     <Filter className="w-4 h-4" />
-                    <span>More Filters</span>
+                    <span className="hidden sm:inline">More Filters</span>
+                    <span className="sm:hidden">Filters</span>
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Approved Queries Data */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
+            <div className="bg-white rounded-lg lg:rounded-xl shadow-sm border border-gray-200 mb-4 sm:mb-6">
+              <div className="p-4 sm:p-6 border-b border-gray-200">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Approved Queries Report</h3>
-                    <p className="text-sm text-gray-600 mt-1">Detailed list of all approved queries with approver information</p>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">Approved Queries Report</h3>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">Detailed list of all approved queries with approver information</p>
                   </div>
                   <button
                     onClick={handleDownloadExcelReport}
-                    className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                    className="flex items-center space-x-2 bg-green-600 text-white px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg hover:bg-green-700 transition-colors"
                   >
                     <Download className="w-4 h-4" />
-                    <span>Export to Excel</span>
+                    <span className="hidden sm:inline">Export to Excel</span>
+                    <span className="sm:hidden">Export</span>
                   </button>
                 </div>
               </div>
