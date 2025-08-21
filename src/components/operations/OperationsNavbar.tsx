@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { FaChevronDown, FaSignOutAlt } from 'react-icons/fa';
+import NotificationCenter from '@/components/shared/NotificationCenter';
 
 // Custom Logout Confirmation Modal
 interface LogoutModalProps {
@@ -192,7 +193,7 @@ export default function OperationsNavbar() {
           </div>
         </div>
 
-        {/* Right section - User info and logout */}
+        {/* Right section - User info, notifications and logout */}
         <div className="flex items-center space-x-2 lg:space-x-4">
           <div className="text-right hidden sm:block">
             <div className="text-xs lg:text-sm text-gray-300">OPERATIONS</div>
@@ -201,6 +202,10 @@ export default function OperationsNavbar() {
               <div className="text-xs text-green-400">{branches.length} Active Branches</div>
             )}
           </div>
+          
+          {/* Notifications */}
+          <NotificationCenter team="operations" />
+          
           <button
             onClick={handleLogout}
             className="bg-red-600 hover:bg-red-700 px-3 lg:px-4 py-2 rounded-md font-medium transition-colors flex items-center space-x-1 lg:space-x-2"

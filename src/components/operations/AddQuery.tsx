@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface AddQueryProps {
   appNo?: string;
+  onQuerySubmitted?: () => void; // Add callback for navigation
 }
 
 interface ApplicationDetails {
@@ -155,7 +156,7 @@ const submitQuery = async (data: {
   }
 };
 
-export default function AddQuery({ appNo = '' }: AddQueryProps) {
+export default function AddQuery({ appNo = '', onQuerySubmitted }: AddQueryProps) {
   const [searchTerm, setSearchTerm] = useState(appNo);
   const [queries, setQueries] = useState<QueryItem[]>([{ id: 1, text: '' }]);
   const [sendTo, setSendTo] = useState<string[]>(['Sales']);
@@ -165,10 +166,15 @@ export default function AddQuery({ appNo = '' }: AddQueryProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showBothTeams, setShowBothTeams] = useState(false);
   const [isQueryDropdownOpen, setIsQueryDropdownOpen] = useState<{[key: number]: boolean}>({});
-  const [querySubmitted, setQuerySubmitted] = useState(false);
   const [showCustomMessage, setShowCustomMessage] = useState(false);
   const [customQueryId, setCustomQueryId] = useState<number | null>(null);
   const [customQueryTeam, setCustomQueryTeam] = useState<'Sales' | 'Credit' | 'Both'>('Sales');
+  const [showConfirmationPopup, setShowConfirmationPopup] = useState(false);
+  const [pendingSubmissionData, setPendingSubmissionData] = useState<{
+    appNo: string;
+    queries: string[];
+    sendTo: string;
+  } | null>(null);
   
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -243,16 +249,10 @@ const creditQueries = [
         queryCount: queries.filter(q => q.text.trim()).length
       });
       
-      // Always show success message regardless of data structure
-      setQuerySubmitted(true);
+      // Don't show success message - remove this block
+      // setQuerySubmitted(true);
       setSearchError(null);
-      console.log('✅ Success message should now be visible (querySubmitted = true)');
-      
-      // Auto-hide success message after 7 seconds
-      setTimeout(() => {
-        console.log('⏰ Auto-hiding success message');
-        setQuerySubmitted(false);
-      }, 7000);
+      console.log('✅ Query submitted without showing success message');
       
       // Reset form only if submission was successful
       if (data && data.success) {
@@ -316,6 +316,14 @@ const creditQueries = [
           
           console.log('📡 Events broadcasted successfully');
         }
+        
+        // Navigate to Queries Raised section after successful submission
+        if (onQuerySubmitted) {
+          console.log('🔄 Navigating to Queries Raised section');
+          setTimeout(() => {
+            onQuerySubmitted();
+          }, 500); // Small delay to ensure data is saved
+        }
       } else {
         console.warn('⚠️ API response indicates failure:', data);
         setSearchError('Failed to submit queries: ' + (data?.message || 'Unknown error'));
@@ -326,7 +334,6 @@ const creditQueries = [
     onError: (error) => {
       console.error('❌ Query submission failed:', error);
       setSearchError(`Error submitting queries: ${error.message}. Please try again.`);
-      setQuerySubmitted(false); // Ensure success message is hidden on error
     }
   });
 
@@ -340,7 +347,6 @@ const creditQueries = [
     if (!cleanSearchTerm) return;
     
     setIsSearching(true);
-    setQuerySubmitted(false);
     searchMutation.mutate(cleanSearchTerm);
   };
 
@@ -358,11 +364,26 @@ const creditQueries = [
     const allQueriesText = validQueries.map(q => q.text);
     const targetTeam = showBothTeams ? 'Both' : sendTo[0];
     
-    submitMutation.mutate({
+    // Store the submission data and show confirmation popup
+    setPendingSubmissionData({
       appNo: searchResult.appNo,
       queries: allQueriesText,
       sendTo: targetTeam
     });
+    setShowConfirmationPopup(true);
+  };
+
+  const handleConfirmSubmission = () => {
+    if (pendingSubmissionData) {
+      submitMutation.mutate(pendingSubmissionData);
+      setShowConfirmationPopup(false);
+      setPendingSubmissionData(null);
+    }
+  };
+
+  const handleCancelSubmission = () => {
+    setShowConfirmationPopup(false);
+    setPendingSubmissionData(null);
   };
 
   const handleQueryChange = (id: number, text: string, isCustom = false, team?: 'Sales' | 'Credit' | 'Custom') => {
@@ -455,50 +476,6 @@ const creditQueries = [
             Search for applications and submit queries to relevant teams
           </p>
         </div>
-
-
-        {/* Success Message */}
-        {querySubmitted && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-2xl shadow-xl p-6 mb-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center">
-                <FaCheckCircle className="text-green-600 text-2xl" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-green-800 text-xl mb-1">🎉 Query Submitted Successfully!</h3>
-                <p className="text-green-700 text-lg mb-2">
-                  Your {queries.filter(q => q.text.trim()).length || 'X'} queries have been sent to:
-                </p>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {sendTo.map((team, index) => (
-                    <span key={`${team}-${index}`} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 border border-green-300">
-                      {team === 'Sales' && '🏢'} {team === 'Credit' && '💳'} {team} Team
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 text-sm text-green-600">
-                  <FaPaperPlane className="text-xs" />
-                  <span>✅ Notification sent • 📋 Dashboard updated • 🔔 Teams notified • 📊 Queries Raised updated</span>
-                </div>
-              </div>
-              <div className="text-green-500">
-                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                  <div className="w-4 h-4 bg-white rounded-full"></div>
-                </div>
-              </div>
-            </div>
-            {searchResult && (
-              <div className="mt-4 p-3 bg-white/70 rounded-lg border border-green-200">
-                <div className="text-xs text-green-700 space-y-1">
-                  <div><strong>Application:</strong> {searchResult.appNo}</div>
-                  <div><strong>Customer:</strong> {searchResult.customerName}</div>
-                  <div><strong>Branch:</strong> {searchResult.branchName}</div>
-                  <div><strong>Timestamp:</strong> {new Date().toLocaleString()}</div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Search Section */}
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 lg:p-6">
@@ -979,6 +956,125 @@ const creditQueries = [
                       Cancel
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Popup */}
+        {showConfirmationPopup && pendingSubmissionData && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full transform transition-all animate-in fade-in zoom-in duration-200">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-t-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <FaPaperPlane className="text-white text-xl" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">Confirm Query Submission</h3>
+                    <p className="text-blue-100">Review before sending to team</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4">
+                {/* Application Info */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-600">Application Number</span>
+                    <span className="font-bold text-gray-900">{searchResult?.appNo}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-600">Customer Name</span>
+                    <span className="font-bold text-gray-900">{searchResult?.customerName}</span>
+                  </div>
+                </div>
+
+                {/* Team Info */}
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      pendingSubmissionData.sendTo === 'Sales' ? 'bg-blue-500' :
+                      pendingSubmissionData.sendTo === 'Credit' ? 'bg-green-500' :
+                      'bg-purple-500'
+                    }`}>
+                      <span className="text-white text-lg">
+                        {pendingSubmissionData.sendTo === 'Sales' ? '🏢' :
+                         pendingSubmissionData.sendTo === 'Credit' ? '💳' : '🔄'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Sending to</p>
+                      <p className="font-bold text-gray-900">
+                        {pendingSubmissionData.sendTo === 'Both' ? 'Sales & Credit Teams' : `${pendingSubmissionData.sendTo} Team`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Queries List */}
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-gray-700">Queries to be raised ({pendingSubmissionData.queries.length}):</p>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {pendingSubmissionData.queries.map((query, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                        <div className="flex items-start gap-2">
+                          <span className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-xs font-bold text-gray-700 flex-shrink-0">
+                            {index + 1}
+                          </span>
+                          <p className="text-sm text-gray-800 font-medium">{query}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Warning Message */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <FaExclamationCircle className="text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-800">Important Notice</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        This query will be sent to the {pendingSubmissionData.sendTo === 'Both' ? 'Sales and Credit teams' : `${pendingSubmissionData.sendTo} team`} for review.
+                        The team will be notified immediately and the query will appear in the Queries Raised section.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="p-6 bg-gray-50 rounded-b-2xl border-t border-gray-200">
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleConfirmSubmission}
+                    disabled={submitMutation.isPending}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-3 px-4 rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                  >
+                    {submitMutation.isPending ? (
+                      <>
+                        <FaSpinner className="animate-spin" />
+                        Sending to Team...
+                      </>
+                    ) : (
+                      <>
+                        <FaCheckCircle />
+                        Yes, Send Query to Team
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleCancelSubmission}
+                    disabled={submitMutation.isPending}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 px-4 rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FaTimes />
+                    Cancel
+                  </button>
                 </div>
               </div>
             </div>

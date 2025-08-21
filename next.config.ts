@@ -1,7 +1,30 @@
 /** @type {import('next').NextConfig} */
 
+const path = require('path');
+
 const nextConfig = {
   reactStrictMode: true,
+  
+  // Webpack configuration for Windows compatibility
+  webpack: (config: any, { dev, isServer }: any) => {
+    // Reduce file system pressure on Windows
+    if (dev && !isServer) {
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300,
+        ignored: /node_modules/,
+      };
+    }
+    
+    // Optimize for Windows file system with absolute path
+    config.cache = {
+      type: 'filesystem',
+      cacheDirectory: path.resolve(process.cwd(), '.next/cache'),
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
+    };
+    
+    return config;
+  },
   
   // Production optimizations
   poweredByHeader: false,
@@ -53,7 +76,17 @@ const nextConfig = {
     BUILDING: process.env.BUILDING,
   },
   
-  // Experimental features for better performance
+  // Turbopack configuration (moved from experimental.turbo)
+  turbopack: {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
+      },
+    },
+  },
+  
+  // Experimental features for better performance and Windows compatibility
   experimental: {
     optimizePackageImports: ['react-icons'],
   },

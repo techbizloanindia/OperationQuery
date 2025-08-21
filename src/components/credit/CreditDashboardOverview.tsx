@@ -5,10 +5,8 @@ import {
   MessageSquare,
   CheckCircle,
   Clock,
-  AlertTriangle,
-  Edit3
+  AlertTriangle
 } from 'lucide-react';
-import ModernRemarksInterface from '../shared/ModernRemarksInterface';
 
 
 interface QueryStats {
@@ -37,33 +35,41 @@ export default function CreditDashboardOverview({ operationsUpdates = [] }: Cred
   });
   const [isLoading, setIsLoading] = useState(true);
   const [recentQueries, setRecentQueries] = useState<any[]>([]);
-  
-  // Remarks interface state
-  const [showRemarksModal, setShowRemarksModal] = useState(false);
-  const [selectedQuery, setSelectedQuery] = useState<any>(null);
 
   useEffect(() => {
     fetchDashboardStats();
     fetchRecentQueries();
     
-    // Set up real-time updates
+    // Set up real-time updates with improved error handling
+    let unsubscribeRealtime: (() => void) | null = null;
+    
     if (typeof window !== 'undefined') {
       import('@/lib/queryUpdateService').then(({ queryUpdateService }) => {
+        // Ensure service is initialized
+        queryUpdateService.initialize();
+        
         // Subscribe to real-time updates for credit team
-        const unsubscribe = queryUpdateService.subscribe('credit', (update) => {
-          console.log('📨 Credit Dashboard Overview received query update:', update.appNo, update.action);
+        unsubscribeRealtime = queryUpdateService.subscribe('credit', (update) => {
+          console.log('📨 Credit Dashboard Overview received real-time update:', {
+            appNo: update.appNo,
+            action: update.action,
+            markedForTeam: update.markedForTeam,
+            team: update.team,
+            broadcast: update.broadcast
+          });
           
-          // Refresh data when we receive updates
+          // Process all updates to ensure real-time functionality
+          console.log('✅ Processing real-time update for credit dashboard');
+          
+          // Always refresh data to ensure real-time updates
           fetchDashboardStats();
           fetchRecentQueries();
         });
         
-        console.log('🌐 Credit Dashboard Overview: Subscribed to real-time updates');
-        
-        // Cleanup on unmount
-        return () => {
-          unsubscribe();
-        };
+        console.log('🌐 Credit Dashboard Overview: Successfully subscribed to real-time updates');
+      }).catch(error => {
+        console.error('❌ Credit Dashboard Overview: Failed to initialize real-time updates:', error);
+        // Still refresh periodically even if real-time fails
       });
     }
     
@@ -73,24 +79,31 @@ export default function CreditDashboardOverview({ operationsUpdates = [] }: Cred
       fetchRecentQueries();
     }, 30000);
     
-    return () => clearInterval(interval);
+    return () => {
+      if (unsubscribeRealtime) {
+        unsubscribeRealtime();
+      }
+      clearInterval(interval);
+    };
   }, []);
 
   const fetchDashboardStats = async () => {
     try {
-      const response = await fetch('/api/queries?team=credit');
+      const response = await fetch('/api/queries?team=credit&status=all&includeBoth=true');
       const result = await response.json();
       
       if (result.success) {
-        const queries = result.data.filter((query: any) => 
+        // Filter to ensure we only count queries relevant to credit team
+        const creditQueries = result.data.filter((query: any) => 
           query.markedForTeam === 'credit' || 
-          query.markedForTeam === 'both' ||
+          query.markedForTeam === 'both' || 
           query.team === 'credit'
         );
+        
         const today = new Date().toDateString();
         
         // Calculate average resolution time from actual data
-        const resolvedQueries = queries.filter((q: any) => q.status === 'resolved' && q.resolvedAt && q.createdAt);
+        const resolvedQueries = creditQueries.filter((q: any) => q.status === 'resolved' && q.resolvedAt && q.createdAt);
         let avgResolutionHours = 0;
         
         if (resolvedQueries.length > 0) {
@@ -99,26 +112,38 @@ export default function CreditDashboardOverview({ operationsUpdates = [] }: Cred
             const resolved = new Date(query.resolvedAt);
             return total + (resolved.getTime() - created.getTime()) / (1000 * 60 * 60);
           }, 0);
-          avgResolutionHours = Math.round(totalHours / resolvedQueries.length * 10) / 10; // Round to 1 decimal
+          avgResolutionHours = Math.round(totalHours / resolvedQueries.length * 10) / 10;
         }
         
         const calculatedStats: QueryStats = {
-          total: queries.length,
-          pending: queries.filter((q: any) => q.status === 'pending').length,
-          resolved: queries.filter((q: any) => q.status === 'resolved').length,
-          urgent: queries.filter((q: any) => q.priority === 'high').length,
-          todaysQueries: queries.filter((q: any) => 
+          total: creditQueries.length,
+          pending: creditQueries.filter((q: any) => q.status === 'pending').length,
+          resolved: creditQueries.filter((q: any) => q.status === 'resolved').length,
+          urgent: creditQueries.filter((q: any) => q.priority === 'high').length,
+          todaysQueries: creditQueries.filter((q: any) => 
             new Date(q.createdAt).toDateString() === today
           ).length,
-          responseRate: queries.length > 0 ? 
-            Math.round((queries.filter((q: any) => q.status === 'resolved').length / queries.length) * 100) : 0,
+          responseRate: creditQueries.length > 0 ? 
+            Math.round((creditQueries.filter((q: any) => q.status === 'resolved').length / creditQueries.length) * 100) : 0,
           avgResolutionTime: avgResolutionHours > 0 ? `${avgResolutionHours}h` : 'N/A'
         };
         
         setStats(calculatedStats);
+      } else {
+        console.error('Failed to fetch credit dashboard stats:', result.message);
       }
     } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
+      console.error('Error fetching credit dashboard stats:', error);
+      // Set default stats on error
+      setStats({
+        total: 0,
+        pending: 0,
+        resolved: 0,
+        urgent: 0,
+        todaysQueries: 0,
+        responseRate: 0,
+        avgResolutionTime: '0h'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -146,46 +171,42 @@ export default function CreditDashboardOverview({ operationsUpdates = [] }: Cred
     }
   };
 
-  // Handle opening remarks modal
-  const handleOpenRemarks = (query: any) => {
-    setSelectedQuery(query);
-    setShowRemarksModal(true);
-  };
-
-  // Handle closing remarks modal
-  const handleCloseRemarks = () => {
-    setShowRemarksModal(false);
-    setSelectedQuery(null);
-  };
-
   const statCards = [
     {
       title: 'Total Queries',
       value: stats.total,
       icon: MessageSquare,
       color: 'text-blue-600',
-      bgColor: 'bg-blue-100'
+      bgColor: 'bg-blue-100',
+      change: '+12%',
+      changeType: 'positive'
     },
     {
       title: 'Pending',
       value: stats.pending,
       icon: Clock,
       color: 'text-orange-600',
-      bgColor: 'bg-orange-100'
+      bgColor: 'bg-orange-100',
+      change: '-5%',
+      changeType: 'negative'
     },
     {
       title: 'Resolved',
       value: stats.resolved,
       icon: CheckCircle,
       color: 'text-green-600',
-      bgColor: 'bg-green-100'
+      bgColor: 'bg-green-100',
+      change: '+8%',
+      changeType: 'positive'
     },
     {
-      title: 'Urgent',
+      title: 'High Risk',
       value: stats.urgent,
       icon: AlertTriangle,
       color: 'text-red-600',
-      bgColor: 'bg-red-100'
+      bgColor: 'bg-red-100',
+      change: '+3%',
+      changeType: 'positive'
     }
   ];
 
@@ -306,14 +327,6 @@ export default function CreditDashboardOverview({ operationsUpdates = [] }: Cred
                     </p>
                   </div>
                   <div className="flex items-center space-x-3">
-                    <button
-                      onClick={() => handleOpenRemarks(query)}
-                      className="flex items-center space-x-1 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-600 text-xs font-medium rounded-lg transition-colors"
-                      title="Add Remarks"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      <span>Remarks</span>
-                    </button>
                     <div className="text-sm text-gray-500">
                       {new Date(query.createdAt).toLocaleTimeString('en-US', {
                         hour: '2-digit',
@@ -334,21 +347,6 @@ export default function CreditDashboardOverview({ operationsUpdates = [] }: Cred
         </div>
       </div>
 
-      {/* Modern Remarks Interface */}
-      {showRemarksModal && selectedQuery && (
-        <ModernRemarksInterface
-          isOpen={showRemarksModal}
-          onClose={handleCloseRemarks}
-          queryId={selectedQuery.queryId || selectedQuery.id}
-          queryTitle={selectedQuery.title || `Query for ${selectedQuery.appNo}`}
-          customerName={selectedQuery.customerName}
-          currentUser={{
-            name: 'Credit User',
-            role: 'credit',
-            team: 'credit'
-          }}
-        />
-      )}
     </div>
   );
 }

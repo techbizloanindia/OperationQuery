@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FaArrowLeft, FaSync, FaCheck, FaHandshake, FaPause, FaSearch, FaClock, FaUser, FaComments, FaPaperPlane, FaBell, FaWifi, FaPlay, FaPauseCircle, FaUndo } from 'react-icons/fa';
+import { FaArrowLeft, FaSync, FaCheck, FaHandshake, FaPause, FaSearch, FaClock, FaUser, FaComments, FaPaperPlane, FaBell, FaWifi, FaPlay, FaPauseCircle, FaUndo, FaHistory } from 'react-icons/fa';
 import { useAuth } from '@/contexts/AuthContext';
 import RevertMessageBox from '../shared/RevertMessageBox';
 import ModernChatInterface from '@/components/shared/ModernChatInterface';
+import EnhancedQueryChatInterface from '@/components/shared/EnhancedQueryChatInterface';
+import ArchivedChatHistory from './ArchivedChatHistory';
+import ChatDisplay from '@/components/shared/ChatDisplay';
 
 interface QueryMessage {
   id: string;
@@ -49,8 +52,8 @@ interface ChatMessage {
   actionType?: string; // Added for action type (e.g., 'revert')
 }
 
-// View types for the three-view interface
-type ViewType = 'applications' | 'queries' | 'chat';
+// View types for the four-view interface
+type ViewType = 'applications' | 'queries' | 'chat' | 'archived-chats';
 
 // Generate unique key for query items
 const generateQueryKey = (query: any, index: number, prefix: string = 'query') => {
@@ -238,6 +241,19 @@ export default function QueryRaised() {
           setNewQueryCount(prev => prev + 1);
           showSuccessMessage(`New query added for ${update.appNo}! 🔔`);
           refetch(); // Refresh to show new query
+        } else if (update.action === 'message_added') {
+          // New message received from sales/credit team
+          console.log(`💬 New message received from ${update.messageFrom} team for query ${update.appNo}`);
+          showSuccessMessage(`New message from ${update.messageFrom} team for ${update.appNo}! 💬`);
+          
+          // If we're currently viewing this query's chat, refresh messages
+          if (selectedQuery && selectedQuery.appNo === update.appNo && currentView === 'chat') {
+            loadChatMessages(selectedQuery.id);
+          }
+          
+          // Show notification badge or indicator for new messages
+          setNewQueryCount(prev => prev + 1);
+          
         } else if (update.action === 'approved' || ['request-approved', 'request-deferral', 'request-otc', 'approved', 'deferred', 'otc', 'resolved'].includes(update.status)) {
           // Query has been approved/resolved - remove from pending list
           console.log(`🆕 Query ${update.appNo} has been ${update.status} - removing from pending queries`);
@@ -272,7 +288,7 @@ export default function QueryRaised() {
       window.removeEventListener('queryResolved', handleQueryUpdated);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [refetch]);
+  }, [refetch, selectedQuery, currentView]);
 
   // Real-time refresh management for applications view
   useEffect(() => {
@@ -365,50 +381,22 @@ export default function QueryRaised() {
     let chatRefreshInterval: NodeJS.Timeout;
     
     if (autoRefresh && currentView === 'chat' && selectedQuery) {
-      console.log(`🔄 Starting auto-refresh for chat messages (Query ${selectedQuery.id})`);
-      
       chatRefreshInterval = setInterval(async () => {
         try {
-          const response = await fetch(`/api/query-actions?queryId=${selectedQuery.id}`);
-          const result = await response.json();
-          
-          if (result.success && result.data?.messages) {
-            const oldCount = chatMessages.length;
-            const newMessages = result.data.messages;
-            
-            // Sort messages chronologically
-            newMessages.sort((a: { timestamp: string }, b: { timestamp: string }) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-            
-            // Check for new messages
-            if (newMessages.length > oldCount) {
-              const newMessageCount = newMessages.length - oldCount;
-              showSuccessMessage(`${newMessageCount} new message(s) received! 💬`);
-              
-              // Scroll to bottom when new messages arrive
-              setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-              }, 100);
-            }
-            
-            setChatMessages(newMessages);
-            setLastUpdated(new Date());
-          } else {
-            console.warn('No messages in refresh response:', result);
-          }
+          await loadChatMessages(selectedQuery.id);
         } catch (error) {
           console.error('Failed to refresh chat messages:', error);
-          setConnectionStatus('disconnected');
         }
-      }, 5000); // Refresh every 5 seconds for faster real-time updates
+      }, 5000); // Refresh every 5 seconds for real-time chat
     }
 
     return () => {
       if (chatRefreshInterval) {
-        console.log('🛑 Stopping auto-refresh for chat messages');
         clearInterval(chatRefreshInterval);
       }
     };
-  }, [autoRefresh, currentView, selectedQuery, chatMessages.length]);
+  }, [autoRefresh, currentView, selectedQuery]);
+
 
   // Mutations for actions
   const actionMutation = useMutation({
@@ -566,7 +554,6 @@ export default function QueryRaised() {
   const handleSelectQuery = (query: Query) => {
     setSelectedQuery(query);
     setCurrentView('chat');
-    // Load chat messages for this query
     loadChatMessages(query.id);
   };
 
@@ -590,11 +577,6 @@ export default function QueryRaised() {
     setShowActionModal(true);
   };
 
-  // Handle opening chat for a specific query
-  const handleOpenChat = (query: Query & { queryIndex: number; queryText: string; queryId: string }) => {
-    setSelectedQueryForChat(query);
-    setIsChatOpen(true);
-  };
 
   const handleSubmitAction = () => {
     if (!selectedQuery) return;
@@ -632,28 +614,45 @@ export default function QueryRaised() {
     showSuccessMessage(autoRefresh ? 'Auto-refresh disabled' : 'Auto-refresh enabled');
   };
 
+  // Handle opening chat for a specific query
+  const handleOpenChat = (query: Query & { queryIndex: number; queryText: string; queryId: string }) => {
+    console.log(`🎯 Operations Dashboard: Opening chat for query:`, {
+      queryId: query.queryId || query.id,
+      id: query.id,
+      appNo: query.appNo,
+      customerName: query.customerName
+    });
+    setSelectedQueryForChat(query);
+    setIsChatOpen(true);
+  };
 
-
-  // Load chat messages with proper error handling and loading state
+  // Load chat messages
   const loadChatMessages = async (queryId: number) => {
     try {
       console.log(`🔄 Loading chat messages for query ${queryId}`);
       
-      // Fetch all message types including responses from Sales and Credit
-      const response = await fetch(`/api/query-actions?queryId=${queryId}`);
+      const response = await fetch(`/api/queries/${queryId}/chat`);
       const result = await response.json();
       
       if (result.success) {
-        // Get messages array from the response
-        const messages = result.data?.messages || [];
-        console.log(`📬 Loaded ${messages.length} messages for query ${queryId}:`, messages);
+        const messages = result.data || [];
+        console.log(`📬 Loaded ${messages.length} messages for query ${queryId}`);
         
-        // Sort messages by timestamp to ensure chronological order (oldest first)
-        messages.sort((a: { timestamp: string }, b: { timestamp: string }) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        // Transform messages to include proper flags for ChatDisplay
+        const transformedMessages = messages.map((msg: any) => ({
+          ...msg,
+          isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
+          isReply: msg.team === 'Sales' || msg.team === 'Credit' ||
+                  msg.senderRole === 'sales' || msg.senderRole === 'credit'
+        }));
         
-        setChatMessages(messages);
+        // Sort messages by timestamp
+        transformedMessages.sort((a: { timestamp: string }, b: { timestamp: string }) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
         
-        // Scroll to bottom after loading messages
+        setChatMessages(transformedMessages);
+        
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 100);
@@ -672,14 +671,13 @@ export default function QueryRaised() {
     if (!newMessage.trim() || !selectedQuery) return;
 
     try {
-      const response = await fetch('/api/query-actions', {
+      const response = await fetch(`/api/queries/${selectedQuery.id}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'message',
-      queryId: selectedQuery.id,
-      message: newMessage,
-          addedBy: user?.name || 'Operations User',
+          message: newMessage,
+          sender: user?.name || 'Operations Team',
+          senderRole: 'operations',
           team: 'Operations'
         }),
       });
@@ -697,6 +695,9 @@ export default function QueryRaised() {
       showSuccessMessage('❌ Error: Failed to send message. Please try again.');
     }
   };
+
+
+
 
   // Format time
   const formatTime = (timestamp: string) => {
@@ -786,14 +787,23 @@ export default function QueryRaised() {
           {/* Header */}
           <div className="p-4 border-b border-gray-200 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <h1 className="text-xl font-bold text-gray-800">
-                Query Raised Applications
-                {newQueryCount > 0 && (
-                  <span className="ml-2 animate-bounce bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                    +{newQueryCount} NEW
-                  </span>
-                )}
-              </h1>
+              <div className="flex items-center space-x-4">
+                <h1 className="text-xl font-bold text-gray-800">
+                  Query Raised Applications
+                  {newQueryCount > 0 && (
+                    <span className="ml-2 animate-bounce bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                      +{newQueryCount} NEW
+                    </span>
+                  )}
+                </h1>
+                <button
+                  onClick={() => setCurrentView('archived-chats')}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm transition-colors"
+                >
+                  <FaHistory className="h-4 w-4" />
+                  Archived Chats
+                </button>
+              </div>
               <div className="flex items-center space-x-2">
                 {getConnectionStatusIcon()}
                 <span className="text-xs text-gray-500">
@@ -1087,12 +1097,19 @@ export default function QueryRaised() {
               </div>
                     </div>
                     
-                    {/* Query Details Section */}
-                    <div className="mt-3 p-4 bg-slate-50 rounded-lg">
-                      <p className="text-gray-700 text-sm font-medium mb-2">Query Details:</p>
-                      <p className="text-gray-700 text-sm leading-relaxed">
-                        {query.queryText || 'No query text available'}
-                      </p>
+                    {/* Query Details Section - Enhanced Bold and Responsive Style */}
+                    <div className="mt-3 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border-l-4 border-purple-600 shadow-md">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center">
+                          <span className="text-white text-xs font-bold">Q</span>
+                        </div>
+                        <p className="text-purple-900 text-sm font-bold uppercase tracking-wider">Operations Query Details:</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-md border border-purple-200 shadow-sm">
+                        <p className="text-gray-900 font-bold text-base leading-relaxed">
+                          {query.queryText || 'No query text available'}
+                        </p>
+                      </div>
                     </div>
                     
                     {/* Query Info Grid */}
@@ -1112,41 +1129,44 @@ export default function QueryRaised() {
                     </div>
                   </div>
                   
-                  {/* Action buttons for pending queries */}
-                  {query.status === 'pending' && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-end space-x-2">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedQuery(query);
-                          handleAction('approve');
-                        }}
-                        className="px-4 py-2 text-sm font-bold text-green-900 bg-green-200 border border-green-400 rounded-full hover:bg-green-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                      >
-                        Approved
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedQuery(query);
-                          handleAction('otc');
-                        }}
-                        className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-200 border border-blue-400 rounded-full hover:bg-blue-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                      >
-                        OTC
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedQuery(query);
-                          handleAction('deferral');
-                        }}
-                        className="px-4 py-2 text-sm font-bold text-orange-900 bg-orange-200 border border-orange-400 rounded-full hover:bg-orange-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                      >
-                        Deferral
-                      </button>
-                    </div>
-                  )}
+                  {/* Action buttons */}
+                  <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-end">
+                    {/* Status-specific action buttons */}
+                    {query.status === 'pending' && (
+                      <div className="flex items-center space-x-2">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedQuery(query);
+                            handleAction('approve');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-green-900 bg-green-200 border border-green-400 rounded-full hover:bg-green-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          Approved
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedQuery(query);
+                            handleAction('otc');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-200 border border-blue-400 rounded-full hover:bg-blue-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          OTC
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedQuery(query);
+                            handleAction('deferral');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-orange-900 bg-orange-200 border border-orange-400 rounded-full hover:bg-orange-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          Deferral
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -1160,7 +1180,7 @@ export default function QueryRaised() {
           {/* Header */}
           <div className="p-4 border-b border-gray-200 flex-shrink-0 flex items-center justify-between">
             <div className="flex items-center">
-              <button 
+              <button
                 onClick={handleBackToQueries}
                 className="p-2 rounded-full hover:bg-gray-200 mr-3"
               >
@@ -1168,12 +1188,12 @@ export default function QueryRaised() {
               </button>
               <div>
                 <h1 className="text-xl font-bold text-gray-800">
-                  {selectedQuery.title || selectedQuery.queries[0]?.text?.slice(0, 40) + '...' || `Query ${selectedQuery.id}`}
+                  Query Chat - {selectedQuery.appNo}
                 </h1>
                 <p className="text-sm text-gray-600">
-                  App: {selectedQuery.appNo} • {selectedQuery.customerName}
+                  Customer: {selectedQuery.customerName}
                   <span className="ml-2 text-xs">
-                    {autoRefresh && 'Auto-updating messages'}
+                    {autoRefresh && '• Auto-updating messages'}
                   </span>
                 </p>
               </div>
@@ -1183,154 +1203,29 @@ export default function QueryRaised() {
             </div>
           </div>
           
-          {/* History Content */}
-          <div className="flex-grow overflow-y-auto p-6 space-y-4 bg-gray-50">
-              {/* Chat Messages */}
-              {chatMessages.map((message) => {
-                // Determine message type based on team/sender role
-                const messageType = message.team === 'Credit' ? 'Credit Response' :
-                                   message.team === 'Sales' ? 'Sales Response' : 
-                                   message.isSystemMessage ? 'System Message' : 'Operations';
-                
-                // Check if this is a revert message
-                const isRevertMessage = message.actionType === 'revert' || 
-                                       (message.message && message.message.includes('🔄 Query Reverted by'));
-                
-                // Skip system messages or display them differently
-                if (message.isSystemMessage) {
-                  return (
-                    <div key={message.id} className="flex justify-center mb-4">
-                      <div className="bg-gradient-to-r from-gray-100 to-gray-200 px-4 py-2 rounded-full text-center text-sm text-gray-700 shadow-sm border border-gray-300 font-medium">
-                        <span className="mr-2">ℹ️</span>
-                      {message.message}
-                      </div>
-                    </div>
-                  );
-                }
-                
-                // Special styling for revert messages
-                if (isRevertMessage) {
-                  // Determine the actual team that performed the revert
-                  let actualTeamContext: 'sales' | 'credit' | 'operations' = 'operations';
-                  
-                  // Check the team from the message
-                  if (message.team && message.team.toLowerCase().includes('sales')) {
-                    actualTeamContext = 'sales';
-                  } else if (message.team && message.team.toLowerCase().includes('credit')) {
-                    actualTeamContext = 'credit';
-                  } else if (message.senderRole && message.senderRole.toLowerCase() === 'sales') {
-                    actualTeamContext = 'sales';
-                  } else if (message.senderRole && message.senderRole.toLowerCase() === 'credit') {
-                    actualTeamContext = 'credit';
-                  }
-
-                  return (
-                    <div key={message.id} className="mb-8">
-                      <div className="relative">
-                        {/* Decorative line to separate revert messages */}
-                        <div className={`absolute -top-4 left-0 right-0 h-1 rounded-full ${
-                          actualTeamContext === 'sales' ? 'bg-gradient-to-r from-blue-200 to-blue-400' : 
-                          actualTeamContext === 'credit' ? 'bg-gradient-to-r from-green-200 to-green-400' : 
-                          'bg-gradient-to-r from-purple-200 to-purple-400'
-                        }`}></div>
-                        <RevertMessageBox 
-                          message={message} 
-                          teamContext={actualTeamContext} 
-                        />
-                        {/* Decorative line after revert messages */}
-                        <div className={`absolute -bottom-4 left-0 right-0 h-1 rounded-full ${
-                          actualTeamContext === 'sales' ? 'bg-gradient-to-r from-blue-400 to-blue-200' : 
-                          actualTeamContext === 'credit' ? 'bg-gradient-to-r from-green-400 to-green-200' : 
-                          'bg-gradient-to-r from-purple-400 to-purple-200'
-                        }`}></div>
-                </div>
-              </div>
-                  );
-                }
-              
-                // Get team-specific styling
-                const getTeamColors = (team: string) => {
-                  switch (team) {
-                    case 'Credit':
-                      return {
-                        bg: 'bg-gradient-to-br from-green-50 via-green-100 to-emerald-50',
-                        border: 'border-green-300',
-                        icon: '💳',
-                        titleColor: 'text-green-900',
-                        textColor: 'text-green-800',
-                        timestampBg: 'bg-green-200',
-                        timestampText: 'text-green-800'
-                      };
-                    case 'Sales':
-                      return {
-                        bg: 'bg-gradient-to-br from-blue-50 via-blue-100 to-cyan-50',
-                        border: 'border-blue-300',
-                        icon: '💼',
-                        titleColor: 'text-blue-900',
-                        textColor: 'text-blue-800',
-                        timestampBg: 'bg-blue-200',
-                        timestampText: 'text-blue-800'
-                      };
-                    default:
-                      return {
-                        bg: 'bg-gradient-to-br from-purple-50 via-purple-100 to-indigo-50',
-                        border: 'border-purple-300',
-                        icon: '⚙️',
-                        titleColor: 'text-purple-900',
-                        textColor: 'text-purple-800',
-                        timestampBg: 'bg-purple-200',
-                        timestampText: 'text-purple-800'
-                      };
-                  }
-                };
-
-                const teamColors = getTeamColors(message.team || '');
-
-                return (
-                  <div key={message.id} className={`${teamColors.bg} p-5 rounded-xl shadow-lg border-2 ${teamColors.border} mb-4 transform transition-all duration-200 hover:scale-[1.01] hover:shadow-xl`}>
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 bg-white p-2 rounded-full shadow-sm border">
-                        <span className="text-xl">{teamColors.icon}</span>
-                    </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start mb-3">
-                          <h3 className={`font-bold text-lg ${teamColors.titleColor}`}>{messageType}</h3>
-                          <span className={`text-sm ${teamColors.timestampText} ${teamColors.timestampBg} px-3 py-1 rounded-full font-semibold shadow-sm`}>
-                            {new Date(message.timestamp).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric'
-                            })} at {new Date(message.timestamp).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        </div>
-                        <div className={`${teamColors.textColor} leading-relaxed text-base font-medium whitespace-pre-wrap break-words bg-white bg-opacity-70 p-4 rounded-lg border border-opacity-30`}>
-                      {message.responseText || message.message}
-                </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              
-              <div ref={messagesEndRef} />
+          {/* Use the new ChatDisplay component */}
+          <div className="flex-1 overflow-hidden">
+            <ChatDisplay
+              messages={chatMessages}
+              title=""
+              showTimestamp={true}
+              className="h-full"
+            />
           </div>
           
           {/* Message Input */}
           <div className="p-4 bg-white border-t border-gray-200 flex-shrink-0">
             <div className="flex items-center space-x-4">
-                <input
-                  type="text"
-                placeholder="Type a message..." 
+              <input
+                type="text"
+                placeholder="Type your message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                 className="flex-1 px-4 py-2 bg-white border-2 border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black font-bold"
                 style={{ color: '#000000', backgroundColor: '#ffffff', fontWeight: '700' }}
               />
-              <button 
+              <button
                 onClick={handleSendMessage}
                 disabled={!newMessage.trim()}
                 className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1407,7 +1302,32 @@ export default function QueryRaised() {
         </div>
       )}
 
-      {/* Chat Interface */}
+      {/* View 4: Archived Chat History */}
+      {currentView === 'archived-chats' && (
+        <div className="flex flex-col h-full">
+          {/* Header with back button */}
+          <div className="p-4 border-b border-gray-200 flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setCurrentView('applications')}
+                className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FaArrowLeft className="h-4 w-4" />
+                Back to Applications
+              </button>
+              <div className="h-6 border-l border-gray-300"></div>
+              <h1 className="text-xl font-bold text-gray-800">Archived Chat Histories</h1>
+            </div>
+          </div>
+          
+          {/* Archived Chat History Component */}
+          <div className="flex-1 overflow-hidden">
+            <ArchivedChatHistory />
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced Chat Interface */}
       {selectedQueryForChat && (
         <ModernChatInterface
           isOpen={isChatOpen}

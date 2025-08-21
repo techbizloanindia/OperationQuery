@@ -147,9 +147,14 @@ export default function QueriesByAppNo({
   };
 
   const isOperationsQuery = (query: QueryData): boolean => {
-    return query.assignedByTeam === 'operations' || 
-           query.markedForTeam === 'operations' ||
-           query.team === 'operations';
+    // A query is from Operations if it was submitted by Operations team
+    // This is used to show newly raised queries in bold for Sales/Credit teams
+    const isFromOperations = query.submittedBy?.toLowerCase().includes('operations') ||
+                            query.submittedBy?.toLowerCase().includes('ops') ||
+                            (query.submittedBy === 'Operations User') ||
+                            (query.submittedBy === 'Operations Team');
+    
+    return isFromOperations;
   };
 
   const handleRemarksChange = (queryId: string, value: string) => {

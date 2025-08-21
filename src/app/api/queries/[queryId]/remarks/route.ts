@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Query, { IRemark } from '@/lib/models/Query';
+import { broadcastQueryUpdate } from '@/lib/eventStreamUtils';
 
 // GET - Get all remarks for a specific query
 export async function GET(
@@ -92,6 +93,50 @@ export async function POST(
     
     const addedRemark = updatedQuery.remarks[updatedQuery.remarks.length - 1];
     console.log(`✅ Successfully added remark ${addedRemark.id} to query ${queryId}`);
+    
+    // Broadcast the message update to all connected clients (especially operations dashboard)
+    try {
+      console.log(`📡 Broadcasting remark update from ${authorTeam} team to Operations Dashboard`);
+      
+      const broadcastData = {
+        id: updatedQuery.id,
+        appNo: updatedQuery.appNo || `APP-${queryId}`,
+        customerName: updatedQuery.customerName || 'Unknown Customer',
+        action: 'message_added',
+        team: authorTeam.toLowerCase(),
+        markedForTeam: 'both', // Notify all teams
+        newMessage: {
+          id: addedRemark.id,
+          text: addedRemark.text,
+          author: addedRemark.author,
+          authorTeam: addedRemark.authorTeam,
+          timestamp: addedRemark.timestamp
+        },
+        broadcast: true, // Broadcast to all teams
+        messageFrom: authorTeam,
+        priority: 'high' // High priority for remarks
+      };
+      
+      // Broadcast to all teams
+      broadcastQueryUpdate(broadcastData);
+      
+      // Also broadcast specifically to each team  
+      ['operations', 'sales', 'credit'].forEach(targetTeam => {
+        if (targetTeam !== authorTeam.toLowerCase()) {
+          const teamSpecificData = {
+            ...broadcastData,
+            markedForTeam: targetTeam
+          };
+          broadcastQueryUpdate(teamSpecificData);
+        }
+      });
+      
+      console.log(`🎯 Message from ${authorTeam} team broadcasted successfully to all dashboards (operations, sales, credit)`);
+      
+    } catch (broadcastError) {
+      console.error('❌ Error broadcasting remark update:', broadcastError);
+      // Don't fail the request if broadcast fails
+    }
     
     return NextResponse.json({
       success: true,

@@ -11,12 +11,20 @@ interface QueryUpdate {
   markedForTeam: string;
   createdAt: string;
   submittedBy: string;
-  action: 'created' | 'updated' | 'deleted' | 'approved' | 'rejected' | 'resolved';
+  action: 'created' | 'updated' | 'deleted' | 'approved' | 'rejected' | 'resolved' | 'message_added';
   resolvedBy?: string;
   resolvedAt?: string;
   approverComment?: string;
   broadcast?: boolean;
   timestamp?: string;
+  messageFrom?: string;
+  newMessage?: {
+    id: string;
+    text: string;
+    author: string;
+    authorTeam: string;
+    timestamp: string;
+  };
 }
 
 interface QueryUpdateCallback {
@@ -32,13 +40,20 @@ class QueryUpdateService {
 
   // Initialize real-time connection
   initialize() {
-    if (this.isConnected) return;
+    if (this.isConnected) {
+      console.log('📡 QueryUpdateService: Already connected, skipping initialization');
+      return;
+    }
 
+    console.log('🚀 QueryUpdateService: Starting initialization...');
+    
     // Try to establish SSE connection first
     this.connectSSE();
     
     // Fallback to polling if SSE is not available
     this.startFallbackPolling();
+    
+    console.log('✅ QueryUpdateService: Initialization completed');
   }
 
   // Connect to Server-Sent Events
@@ -119,6 +134,14 @@ class QueryUpdateService {
           console.log('🔄 Starting fallback polling due to SSE error');
           this.startFallbackPolling();
         }
+        
+        // Attempt to reconnect after 10 seconds
+        setTimeout(() => {
+          if (!this.isConnected) {
+            console.log('🔄 Attempting to reconnect SSE...');
+            this.connectSSE();
+          }
+        }, 10000);
       };
     } catch (error) {
       console.warn('SSE not supported, using polling fallback:', error);

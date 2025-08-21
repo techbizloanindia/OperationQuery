@@ -61,6 +61,7 @@ export default function QueryReplyModal({
   const [replyText, setReplyText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -135,6 +136,7 @@ export default function QueryReplyModal({
       setReplyText('');
       setIsSubmitting(false);
       setAuthError(null); // Clear any previous errors
+      setShowSuccess(true);
       
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['chatMessages', queryId] });
@@ -142,8 +144,11 @@ export default function QueryReplyModal({
       queryClient.invalidateQueries({ queryKey: ['creditQueries'] });
       queryClient.invalidateQueries({ queryKey: ['pendingQueries'] });
       
+      // Hide success message after 3 seconds
+      setTimeout(() => setShowSuccess(false), 3000);
+      
       // Show success message
-      console.log('✅ Reply submitted successfully:', data.message);
+      console.log(`✅ Reply submitted successfully from ${team} team - will appear in Operations message box:`, data.message);
     },
     onError: (error: Error) => {
       setIsSubmitting(false);
@@ -421,6 +426,27 @@ export default function QueryReplyModal({
                 )}
               </button>
             </div>
+            
+            {/* Success Message */}
+            {showSuccess && (
+              <div className="flex items-center gap-2 p-3 bg-green-100 border border-green-200 rounded-lg">
+                <FaCheckCircle className="text-green-600" />
+                <span className="text-sm text-green-800 font-medium">
+                  ✅ Reply sent successfully! Your message is now visible in the Operations message box.
+                </span>
+              </div>
+            )}
+            
+            {/* Error Message */}
+            {authError && (
+              <div className="flex items-center gap-2 p-3 bg-red-100 border border-red-200 rounded-lg">
+                <FaExclamationCircle className="text-red-600" />
+                <span className="text-sm text-red-800 font-medium">
+                  {authError}
+                </span>
+              </div>
+            )}
+            
             <div className="text-xs text-gray-500">
               Press Enter to send, Shift+Enter for new line. Your response will be visible to Operations team in real-time.
             </div>

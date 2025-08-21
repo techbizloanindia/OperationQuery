@@ -55,6 +55,8 @@ export default function ModernRemarksInterface({
   const [isTyping, setIsTyping] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const remarksEndRef = useRef<HTMLDivElement>(null);
   const remarksContainerRef = useRef<HTMLDivElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -96,25 +98,35 @@ export default function ModernRemarksInterface({
 
   const fetchRemarks = async () => {
     try {
+      console.log(`🔍 ModernRemarksInterface: Fetching remarks for queryId: ${queryId}`);
       const response = await fetch(`/api/queries/${queryId}/remarks`);
       const result = await response.json();
       
+      console.log(`📨 ModernRemarksInterface: API response:`, result);
+      
       if (result.success) {
         // Transform API response to component format
-        const transformedRemarks = (result.data || []).map((remark: any) => ({
-          id: remark.id || `remark-${Date.now()}-${Math.random()}`,
-          queryId: queryId,
-          remark: remark.text || remark.remark,
-          sender: remark.author || remark.sender,
-          senderRole: remark.authorRole || remark.senderRole,
-          timestamp: remark.timestamp,
-          team: remark.authorTeam || remark.team || remark.senderRole,
-          status: 'delivered' as const
-        }));
+        const transformedRemarks = (result.data || []).map((remark: any) => {
+          console.log(`✅ ModernRemarksInterface: Transforming remark:`, remark);
+          return {
+            id: remark.id || `remark-${Date.now()}-${Math.random()}`,
+            queryId: queryId,
+            remark: remark.text || remark.remark,
+            sender: remark.author || remark.sender,
+            senderRole: remark.authorRole || remark.senderRole,
+            timestamp: remark.timestamp,
+            team: remark.authorTeam || remark.team || remark.senderRole,
+            status: 'delivered' as const
+          };
+        });
+        
+        console.log(`🎯 ModernRemarksInterface: Setting ${transformedRemarks.length} remarks`);
         setRemarks(transformedRemarks);
+      } else {
+        console.error('❌ ModernRemarksInterface: API returned error:', result.error);
       }
     } catch (error) {
-      console.error('Error fetching remarks:', error);
+      console.error('❌ ModernRemarksInterface: Error fetching remarks:', error);
     }
   };
 
@@ -132,12 +144,15 @@ export default function ModernRemarksInterface({
   };
 
   const sendRemark = async () => {
-    if (!newRemark.trim()) return;
+    if (!newRemark.trim() || isSending) return;
+
+    const messageText = newRemark.trim();
+    setIsSending(true);
 
     const tempRemark: RemarkMessage = {
       id: `temp-${Date.now()}`,
       queryId,
-      remark: newRemark.trim(),
+      remark: messageText,
       sender: currentUser.name,
       senderRole: currentUser.role,
       timestamp: new Date().toISOString(),
@@ -149,23 +164,33 @@ export default function ModernRemarksInterface({
     setNewRemark('');
 
     try {
+      console.log(`📤 ${currentUser.team} team sending message:`, {
+        queryId,
+        message: messageText,
+        team: currentUser.team,
+        sender: currentUser.name
+      });
+
       const response = await fetch(`/api/queries/${queryId}/remarks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: newRemark.trim(),
+          text: messageText,
           author: currentUser.name,
           authorRole: currentUser.role,
-          authorTeam: currentUser.team
+          authorTeam: currentUser.team,
+          broadcast: true // Ensure operations dashboard gets notified
         }),
       });
 
       const result = await response.json();
       
       if (result.success) {
-        // Update remark status
+        console.log(`✅ Message sent successfully by ${currentUser.team} team`);
+        
+        // Update remark status to delivered
         const sentRemark = {
           ...tempRemark,
           id: result.data.id,
@@ -175,14 +200,25 @@ export default function ModernRemarksInterface({
         setRemarks(prev => prev.map(remark => 
           remark.id === tempRemark.id ? sentRemark : remark
         ));
+
+        // Show success message
+        setShowSuccessMessage(true);
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+        }, 3000);
+
+        console.log(`🎯 Message broadcasted to Operations Dashboard from ${currentUser.team} team`);
+        
       } else {
         throw new Error(result.error || 'Failed to send remark');
       }
     } catch (error) {
-      console.error('Error sending remark:', error);
-      // Update remark status to show error
+      console.error(`❌ Error sending message from ${currentUser.team} team:`, error);
+      // Remove temp message on error
       setRemarks(prev => prev.filter(remark => remark.id !== tempRemark.id));
-      alert('Failed to send remark. Please try again.');
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -373,13 +409,29 @@ export default function ModernRemarksInterface({
               
               <button
                 onClick={sendRemark}
-                disabled={!newRemark.trim()}
+                disabled={!newRemark.trim() || isSending}
                 className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-full transition-all duration-200 shadow-lg disabled:cursor-not-allowed"
               >
-                <Send className="w-5 h-5" />
+                {isSending ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
               </button>
             </div>
             
+            {/* Success message */}
+            {showSuccessMessage && (
+              <div className="mt-3 p-3 bg-green-100 border border-green-200 rounded-lg animate-fadeIn">
+                <div className="flex items-center">
+                  <CheckCheck className="w-4 h-4 text-green-600 mr-2" />
+                  <span className="text-sm text-green-800 font-medium">
+                    Message sent successfully to Operations Dashboard!
+                  </span>
+                </div>
+              </div>
+            )}
+
             <p className="text-xs text-gray-500 mt-2 text-center">
               Press Enter to send • Shift + Enter for new line
             </p>

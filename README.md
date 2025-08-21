@@ -30,7 +30,7 @@ npm run dev
 # Access at http://localhost:3000
 ```
 
-## 🎯 Core Value Proposition
+## 🚀 Core Value Proposition
 
 - **🚀 Real-Time Collaboration**: Instant messaging and live updates across all teams
 - **🔄 Advanced Workflow Management**: Multi-stage approval process with complete audit trails
@@ -39,6 +39,8 @@ npm run dev
 - **🛡️ Enterprise Security**: Role-based access control with team-specific permissions
 - **⚡ High Performance**: Built with Next.js 15, React 19, and optimized for scale
 - **🔧 Modern Architecture**: Microservices design with MongoDB and real-time updates
+- **💬 Persistent Chat System**: Complete chat history archiving with database persistence
+- **📋 Query Archive Management**: Full audit trail and historical data access
 
 ## 🔐 Authentication & Security
 
@@ -103,6 +105,8 @@ opsquery/
 │   │   │   ├── 📁 bulk-upload/           # File Upload API
 │   │   │   │   └── route.ts
 │   │   │   ├── 📁 bulk-upload-json/      # JSON Bulk Upload API
+│   │   │   │   └── route.ts
+│   │   │   ├── 📁 chat-archives/         # 📋 Archived Chat History API
 │   │   │   │   └── route.ts
 │   │   │   ├── 📁 health/                # Health Check API
 │   │   │   │   └── route.ts
@@ -230,6 +234,7 @@ opsquery/
 │   │   ├── 📁 operations/                # Operations Team Components
 │   │   │   ├── AddQuery.tsx              # 🔒 Query Creation Form (Operations Only)
 │   │   │   ├── AddQueryClean.tsx         # Clean Query Creation Interface
+│   │   │   ├── ArchivedChatHistory.tsx   # 📋 Archived Chat History Viewer
 │   │   │   ├── CaseAccordion.tsx         # Case Management View
 │   │   │   ├── DashboardOverview.tsx     # Operations Dashboard Overview
 │   │   │   ├── EmptyState.tsx            # Empty State Component
@@ -290,12 +295,16 @@ opsquery/
 │   │   │   ├── Query.ts                  # Query Data Model
 │   │   │   ├── Remarks.ts                # Remarks Model
 │   │   │   └── User.ts                   # User Data Model
+│   │   ├── 📁 services/                  # Business Logic Services
+│   │   │   └── ChatStorageService.ts     # 📋 MongoDB Chat Persistence Service
 │   │   ├── dashboardSyncUtils.ts         # Dashboard Sync Utilities
+│   │   ├── enhancedSyncService.ts        # Enhanced Sync Service
 │   │   ├── eventStreamUtils.ts           # Event Stream Utilities
 │   │   ├── mongodb.ts                    # MongoDB Connection
 │   │   ├── querySyncService.ts           # Query Sync Service
 │   │   ├── queryUpdateLogger.ts          # Query Update Logger
-│   │   └── queryUpdateService.ts         # Query Update Service
+│   │   ├── queryUpdateService.ts         # Query Update Service
+│   │   └── realTimeService.ts            # Real-time Communication Service
 │   │
 │   └── 📁 types/                        # TypeScript Definitions
 │       └── shared.ts                     # Shared Type Definitions
@@ -411,6 +420,7 @@ App (Root Layout)
 │   │   ├── OperationsSidebar
 │   │   │   ├── Dashboard Overview Tab
 │   │   │   ├── Queries Raised Tab
+│   │   │   ├── 📋 Archived Chats Tab (NEW)
 │   │   │   ├── Sanctioned Cases Tab
 │   │   │   ├── ⭐ Add Query Tab (EXCLUSIVE)
 │   │   │   ├── Queries Resolved Tab
@@ -593,11 +603,89 @@ graph TD
     end
 ```
 
-### 3. 💬 Real-time Communication Flow
+## 🔄 Complete Working Workflow
+
+### 1. � Secure Query Creation Process
 
 ```mermaid
 sequenceDiagram
-    participant O as Operations
+    participant USER as User
+    participant AUTH as Auth System
+    participant OPS as Operations Dashboard
+    participant API as Queries API
+    participant DB as Database
+    participant TEAMS as Other Teams
+    
+    Note over USER,TEAMS: Query Creation Security Flow
+    
+    USER->>AUTH: Login with Credentials
+    AUTH->>AUTH: Validate User Role
+    AUTH->>USER: Return User Object with Role
+    
+    alt User Role = 'operations'
+        USER->>OPS: Access Operations Dashboard
+        OPS->>OPS: Show AddQuery Component
+        USER->>OPS: Fill Query Form
+        OPS->>API: POST /api/queries with x-user-role header
+        API->>API: Validate Role = 'operations'
+        API->>DB: Create Query Document
+        DB->>API: Return Success
+        API->>TEAMS: Broadcast Real-time Update
+        API->>OPS: Return Success Response
+        OPS->>USER: Show Success Message
+    else User Role != 'operations'
+        USER->>OPS: Try to Access Operations Dashboard
+        OPS->>API: POST /api/queries with x-user-role header
+        API->>API: Validate Role != 'operations'
+        API->>OPS: Return 403 Forbidden
+        OPS->>USER: Show "Access Denied" Error
+    end
+```
+
+### 2. 📋 Enhanced Query Lifecycle with Chat Archiving
+
+```mermaid
+graph TD
+    subgraph "Complete Query Workflow with Chat Persistence"
+        A[🔒 Query Created<br/>Operations Only] --> B{Team Assignment}
+        B -->|Sales| C[📤 Sales Team Notified]
+        B -->|Credit| D[📤 Credit Team Notified]
+        B -->|Both| E[📤 Both Teams Notified]
+        
+        C --> F[💬 Sales Team Response<br/>Chat Messages Stored]
+        D --> G[💬 Credit Team Response<br/>Chat Messages Stored]
+        E --> H[💬 Multi-team Response<br/>Chat Messages Stored]
+        
+        F --> I{Sales Action}
+        G --> J{Credit Action}
+        H --> K{Team Actions}
+        
+        I -->|Direct Response| L[✅ Query Resolved<br/>📋 Chat Archived]
+        I -->|Revert| M[🔄 Back to Operations]
+        
+        J -->|Direct Response| L
+        J -->|Revert| M
+        
+        K -->|All Responded| L
+        K -->|Revert| M
+        
+        M --> N[🔍 Operations Review]
+        N -->|Approve/OTC/Defer| O[📋 Send for Approval]
+        N -->|Modify Query| A
+        
+        O --> P[✅ Approval Team Review]
+        P --> Q{Approval Decision}
+        
+        Q -->|✅ Approved| L
+        Q -->|❌ Rejected| R[📝 Return with Feedback]
+        
+        R --> N
+        
+        L --> S[📊 Query Complete<br/>💾 Chat History Archived<br/>📋 Available in Archives]
+    end
+```
+
+### 3. 💬 Real-time Communication & Archiving Flow
     participant S as Sales
     participant C as Credit
     participant A as Approval Team
@@ -828,10 +916,25 @@ Headers: {
 Response: 403 if role !== 'operations'
 ```
 
-#### 💬 Query Actions (All Teams)
+#### � Chat Archives (Operations Access)
+```typescript
+GET /api/chat-archives
+Query Parameters: {
+  appNo?: string,
+  customerName?: string,
+  markedForTeam?: 'sales' | 'credit' | 'both',
+  archiveReason?: 'approved' | 'deferred' | 'otc' | 'rejected',
+  limit?: number,
+  offset?: number
+}
+Response: Paginated archived chat histories
+```
+
+#### �💬 Query Actions (All Teams)
 ```typescript
 POST /api/query-actions
 // Messaging and responses - accessible by all teams
+// Enhanced with automatic chat archiving on approval
 ```
 
 #### ✅ Approvals (Approval Team Only)
@@ -852,7 +955,50 @@ GET /api/approvals
 }
 ```
 
-## 📈 Real-time Features
+## � Archived Chat History System
+
+### 🔧 Chat Persistence Architecture
+
+The system now includes comprehensive chat history archiving that automatically preserves all communication when queries are resolved:
+
+#### **Key Features:**
+- **🔄 Automatic Archiving**: Chat histories are automatically saved when queries are approved/resolved
+- **🗃️ MongoDB Persistence**: All chat data stored in dedicated `archived_chats` collection
+- **🔍 Advanced Filtering**: Search by App No, Customer Name, Team, Archive Reason, Date Range
+- **👁️ Modal Chat Viewer**: Full-featured chat history display with message threading
+- **⚡ Real-time Integration**: Seamless integration with existing real-time messaging system
+
+#### **Database Schema:**
+```typescript
+interface ArchivedChat {
+  _id: string;
+  queryId: string;
+  appNo: string;
+  customerName: string;
+  queryTitle: string;
+  queryStatus: string;
+  markedForTeam: string;
+  messages: ChatMessage[];
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date;
+  archiveReason: 'approved' | 'deferred' | 'otc' | 'rejected';
+}
+```
+
+#### **Access Points:**
+- **Operations Dashboard** → "Archived Chats" button in Query Raised section
+- **API Endpoint**: `GET /api/chat-archives` with advanced filtering
+- **Real-time Updates**: Live synchronization across all dashboards
+
+### 🎯 Archive Workflow
+
+1. **Active Query Phase**: All chat messages stored in real-time with dual storage (in-memory + MongoDB)
+2. **Query Resolution**: Upon approval/deferral/OTC, chat history automatically archived
+3. **Archive Access**: Operations team can view complete chat history with full context
+4. **Data Persistence**: Archived chats maintained permanently for audit and compliance
+
+## �📈 Real-time Features
 
 ### Live Updates
 - **Query Status Changes** - Instant status updates across all dashboards

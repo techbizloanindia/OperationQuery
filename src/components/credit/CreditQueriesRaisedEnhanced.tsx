@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { FaArrowLeft, FaSync, FaSearch, FaClock, FaUser, FaComments, FaBell, FaWifi, FaPlay, FaPause, FaReply } from 'react-icons/fa';
-import { queryUpdateService } from '@/lib/queryUpdateService';
-import QueryReplyModal from '@/components/shared/QueryReplyModal';
-import ModernChatInterface from '@/components/shared/ModernChatInterface';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { FaArrowLeft, FaSync, FaSearch, FaClock, FaUser, FaComments, FaPaperPlane, FaBell, FaWifi, FaPlay, FaPauseCircle, FaHistory } from 'react-icons/fa';
 import { useAuth } from '@/contexts/AuthContext';
+import ChatDisplay from '@/components/shared/ChatDisplay';
+import ModernChatInterface from '@/components/shared/ModernChatInterface';
 
 interface QueryMessage {
   id: string;
@@ -13,7 +13,7 @@ interface QueryMessage {
   timestamp?: string;
   sender?: string;
   senderRole?: string;
-  status?: 'pending' | 'approved' | 'deferred' | 'otc' | 'resolved' | 'pending-approval';
+  status?: 'pending' | 'approved' | 'deferred' | 'otc' | 'resolved' | 'waiting for approval';
 }
 
 interface Query {
@@ -24,265 +24,386 @@ interface Query {
   sendTo: string[];
   submittedBy: string;
   submittedAt: string;
-  status: 'pending' | 'approved' | 'deferred' | 'otc' | 'resolved' | 'pending-approval';
+  status: 'pending' | 'approved' | 'deferred' | 'otc' | 'resolved' | 'waiting for approval';
   branch: string;
   branchCode: string;
+  employeeId?: string;
   markedForTeam?: string;
   title?: string;
   priority?: 'high' | 'medium' | 'low';
   tat?: string;
   queryId?: string;
   queryIndex?: number;
-  queryText?: string;
+}
+
+interface ChatMessage {
+  id: string;
+  queryId: number;
+  message: string;
+  sender: string;
+  senderRole: string;
+  timestamp: string;
+  team?: string;
+  responseText?: string;
+  isSystemMessage?: boolean;
+  actionType?: string;
+  isQuery?: boolean;
+  isReply?: boolean;
 }
 
 // View types for the interface
-type ViewType = 'applications' | 'queries';
+type ViewType = 'applications' | 'queries' | 'chat';
 
 // Fetch queries function
 const fetchQueries = async (): Promise<Query[]> => {
   try {
-    const response = await fetch('/api/queries?team=credit&status=all&includeBoth=true');
+    const response = await fetch('/api/queries?status=pending&team=credit&includeBoth=true');
     const result = await response.json();
     
     if (!response.ok || !result.success) {
       throw new Error(result.error || 'Failed to fetch queries');
     }
-
-    // Convert the API response to the format expected by the component
-    const queries = result.data
-      .filter((queryData: any) => {
-        if (!queryData || typeof queryData !== 'object') {
-          console.warn('Invalid query data:', queryData);
-          return false;
-        }
-        // Show all queries for credit team including those marked for 'both' teams
-        return queryData.markedForTeam === 'credit' || 
-               queryData.markedForTeam === 'both' || 
-               queryData.team === 'credit';
-      })
-      .map((queryData: any, index: number) => {
-        try {
-          const queryMessages = queryData.queries || [{
-            id: queryData.id || `query-${index}`,
-            text: queryData.title || 'Query',
-            timestamp: queryData.createdAt,
-            sender: queryData.submittedBy || 'Operations User',
-            status: queryData.status
-          }];
-
-          return {
-            id: typeof queryData.id === 'string' 
-              ? parseInt(queryData.id.split('-')[0].replace(/[^0-9]/g, '')) || Math.floor(Math.random() * 10000)
-              : typeof queryData.id === 'number' 
-                ? queryData.id 
-                : Math.floor(Math.random() * 10000),
-            appNo: queryData.appNo,
-            customerName: queryData.customerName || 'Unknown Customer',
-            title: queryData.title || queryMessages[0]?.text?.slice(0, 50) + '...' || `Query ${queryData.id || 'Unknown'}`,
-            queries: queryMessages.map((q: any) => ({
-              id: q.id,
-              text: q.text,
-              timestamp: q.timestamp || queryData.createdAt,
-              sender: q.sender || queryData.submittedBy || 'Operations User',
-              status: q.status || queryData.status
-            })),
-            sendTo: queryData.sendTo || [queryData.team],
-            submittedBy: queryData.submittedBy || 'Operations User',
-            submittedAt: queryData.createdAt,
-            status: queryData.status,
-            branch: queryData.branch || 'Unknown Branch',
-            branchCode: queryData.branchCode || 'UNK',
-            markedForTeam: queryData.markedForTeam || queryData.team,
-            tat: queryData.tat || '24 hours',
-            priority: queryData.priority || 'medium'
-          };
-        } catch (mapError) {
-          console.error('Error processing query data:', mapError, queryData);
-          return {
-            id: Math.floor(Math.random() * 10000),
-            appNo: queryData?.appNo || `APP-${index}`,
-            customerName: 'Unknown Customer',
-            title: 'Error Loading Query',
-            queries: [],
-            sendTo: ['credit'],
-            submittedBy: 'System',
-            submittedAt: new Date().toISOString(),
-            status: 'pending' as const,
-            branch: 'Unknown Branch',
-            branchCode: 'UNK',
-            markedForTeam: 'credit',
-            tat: '24 hours',
-            priority: 'medium' as const
-          };
-        }
-      });
     
-    // Process and flatten queries for the component
-    const processedQueries: Array<Query & { queryIndex: number; queryText: string; queryId: string }> = [];
-    
-    queries.forEach((app: Query) => {
-      app.queries.forEach((query, qIndex) => {
-        processedQueries.push({
-          ...app,
-          queryIndex: qIndex + 1,
-          queryText: query.text,
-          queryId: query.id,
-          status: query.status || app.status
-        });
-      });
+    // Filter queries marked for credit team or both teams
+    const filteredQueries = result.data.filter((queryData: any) => {
+      return queryData.markedForTeam === 'credit' || 
+             queryData.markedForTeam === 'both' ||
+             queryData.sendTo?.includes('Credit');
     });
     
-    return processedQueries;
+    // Convert the API response to the format expected by the component
+    const queries = filteredQueries.map((queryData: any) => ({
+      id: queryData.id,
+      appNo: queryData.appNo,
+      customerName: queryData.customerName,
+      title: queryData.queries[0]?.text || `Query ${queryData.id}`,
+      queries: queryData.queries.map((q: any, index: number) => ({
+        id: q.id,
+        text: q.text,
+        timestamp: q.timestamp || queryData.submittedAt,
+        sender: q.sender || queryData.submittedBy,
+        status: q.status || 'pending',
+        queryNumber: q.queryNumber || (index + 1),
+        sentTo: q.sentTo || queryData.sendTo || [],
+        tat: q.tat || queryData.tat || '24 hours'
+      })),
+      sendTo: queryData.sendTo,
+      submittedBy: queryData.submittedBy,
+      submittedAt: queryData.submittedAt,
+      status: queryData.status,
+      branch: queryData.branch,
+      branchCode: queryData.branchCode,
+      markedForTeam: queryData.markedForTeam,
+      tat: '24 hours',
+      priority: 'medium'
+    }));
+    
+    return queries;
   } catch (error) {
     console.error('Error fetching credit queries:', error);
     throw error;
   }
 };
 
-export default function CreditQueriesRaised() {
-  // View and selection state
+export default function CreditQueriesRaisedEnhanced() {
+  // View state management
   const [currentView, setCurrentView] = useState<ViewType>('applications');
   const [selectedAppNo, setSelectedAppNo] = useState<string>('');
+  const [selectedQuery, setSelectedQuery] = useState<Query | null>(null);
   const [appQueries, setAppQueries] = useState<Array<Query & { queryIndex: number; queryText: string; queryId: string }>>([]);
   
-  // Query data state
+  // UI state
   const [searchTerm, setSearchTerm] = useState('');
-  const [queries, setQueries] = useState<Query[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isError, setIsError] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
   
   // Real-time state
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'polling' | 'disconnected'>('disconnected');
+  const [newQueryCount, setNewQueryCount] = useState(0);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
   
   // Chat functionality
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedQueryForChat, setSelectedQueryForChat] = useState<Query & { queryIndex: number; queryText: string; queryId: string } | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Reply modal state
-  const [replyModalOpen, setReplyModalOpen] = useState(false);
-  const [selectedQueryForReply, setSelectedQueryForReply] = useState<Query & { queryIndex: number; queryText: string; queryId: string } | null>(null);
-
-  // Get current user from auth context
+  const queryClient = useQueryClient();
   const { user } = useAuth();
+  
+  // Fetch queries with real-time updates
+  const { data: queries, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['creditQueries', 'pending'],
+    queryFn: async () => {
+      setConnectionStatus('connecting');
+      try {
+        console.log('🔍 Credit Dashboard: Fetching queries from API...');
+        const result = await fetchQueries();
+        console.log(`🔍 Credit Dashboard: Received ${result.length} queries from API`);
+        setConnectionStatus('connected');
+        setLastUpdated(new Date());
+        return result;
+      } catch (error) {
+        console.error('🔍 Credit Dashboard: Error fetching queries:', error);
+        setConnectionStatus('disconnected');
+        throw error;
+      }
+    },
+    refetchOnWindowFocus: true,
+    staleTime: 10000,
+    refetchInterval: autoRefresh ? 15000 : false,
+    refetchIntervalInBackground: true,
+  });
 
-  // Load queries
-  const loadQueries = async () => {
-    try {
-      setIsLoading(true);
-      setIsError(false);
-      setError(null);
-      
-      const fetchedQueries = await fetchQueries();
-      setQueries(fetchedQueries);
-      setLastUpdated(new Date());
-      
-      console.log(`✅ Loaded ${fetchedQueries.length} credit queries`);
-    } catch (err) {
-      console.error('💥 Error loading credit queries:', err);
-      setIsError(true);
-      setError(err as Error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Initialize real-time updates and load data
+  // Listen for query events for immediate updates
   useEffect(() => {
-    loadQueries();
-    
-    // Initialize query update service
-    if (typeof window !== 'undefined') {
-      queryUpdateService.initialize();
-      
-      // Subscribe to real-time updates for credit team
+    const handleQueryAdded = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔔 Credit Dashboard: New query added event detected!', customEvent?.detail);
+      setNewQueryCount(prev => prev + 1);
+      showSuccessMessage('New query added! Refreshing data... 🔔');
+      refetch();
+    };
+
+    const handleQueryUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔄 Credit Dashboard: Query updated event detected!', customEvent?.detail);
+      showSuccessMessage('Query updated! Refreshing data... ✅');
+      refetch();
+    };
+
+    // Add event listeners
+    console.log('📡 Credit Dashboard: Setting up event listeners...');
+    window.addEventListener('queryAdded', handleQueryAdded);
+    window.addEventListener('queryUpdated', handleQueryUpdated);
+    window.addEventListener('queryResolved', handleQueryUpdated);
+
+    // Subscribe to real-time updates from queryUpdateService
+    import('@/lib/queryUpdateService').then(({ queryUpdateService }) => {
       const unsubscribe = queryUpdateService.subscribe('credit', (update) => {
-        console.log('📨 Credit Queries received update:', update.appNo, update.action);
+        console.log('📨 Credit Dashboard received real-time update:', update.appNo, update.action);
         
-        // Refresh queries when we receive updates
-        loadQueries();
+        // Handle different types of updates
+        if (update.action === 'created' && (update.markedForTeam === 'credit' || update.markedForTeam === 'both')) {
+          setNewQueryCount(prev => prev + 1);
+          showSuccessMessage(`New query added for ${update.appNo}! 🔔`);
+          refetch();
+        } else if (update.action === 'message_added') {
+          console.log(`💬 New message received for query ${update.appNo}`);
+          showSuccessMessage(`New message for ${update.appNo}! 💬`);
+          
+          if (selectedQuery && selectedQuery.appNo === update.appNo && currentView === 'chat') {
+            loadChatMessages(selectedQuery.id);
+          }
+          
+          setNewQueryCount(prev => prev + 1);
+        } else if (update.action === 'updated') {
+          refetch();
+        }
+        
+        setLastUpdated(new Date());
       });
       
-      console.log('🌐 Credit Queries: Initialized real-time updates');
+      console.log('🌐 Credit Dashboard: Subscribed to real-time query updates');
       
-      // Cleanup on unmount
-      return () => {
-        unsubscribe();
-      };
-    }
-  }, []);
+      return unsubscribe;
+    });
 
-  // Auto-refresh interval
-  useEffect(() => {
-    if (!autoRefresh) return;
-    
-    const interval = setInterval(() => {
-      if (!isLoading && !isRefreshing) {
-        loadQueries();
-      }
-    }, 30000); // Refresh every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, [autoRefresh, isLoading, isRefreshing]);
+    return () => {
+      console.log('🧹 Credit Dashboard: Cleaning up event listeners...');
+      window.removeEventListener('queryAdded', handleQueryAdded);
+      window.removeEventListener('queryUpdated', handleQueryUpdated);
+      window.removeEventListener('queryResolved', handleQueryUpdated);
+    };
+  }, [refetch, selectedQuery, currentView]);
 
-  // Handle manual refresh
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await loadQueries();
-    setTimeout(() => setIsRefreshing(false), 500);
-  };
-
-  // Handle selecting an application to view its queries
-  const handleSelectApplication = async (appNo: string) => {
-    setSelectedAppNo(appNo);
-    const queriesForApp = queries.filter(q => q.appNo === appNo);
-    const processedAppQueries: Array<Query & { queryIndex: number; queryText: string; queryId: string }> = [];
+  // Extract individual queries for display
+  const individualQueries = React.useMemo(() => {
+    if (!queries || queries.length === 0) return [];
     
-    queriesForApp.forEach((app: Query) => {
-      app.queries.forEach((query, qIndex) => {
-        processedAppQueries.push({
-          ...app,
-          queryIndex: qIndex + 1,
-          queryText: query.text,
-          queryId: `${app.appNo}-Q${qIndex + 1}`
-        });
+    const individual: Array<Query & { queryIndex: number; queryText: string; queryId: string }> = [];
+    
+    queries.forEach(queryGroup => {
+      queryGroup.queries.forEach((query, index) => {
+        const queryStatus = query.status || queryGroup.status;
+        const isResolved = ['request-approved', 'request-deferral', 'request-otc', 'approved', 'resolved', 'deferred', 'otc'].includes(queryStatus);
+        
+        if (!isResolved) {
+          individual.push({
+            ...queryGroup,
+            queryIndex: index + 1,
+            queryText: query.text,
+            queryId: query.id,
+            id: parseInt(query.id.split('-')[0]) + index,
+            title: `Query ${index + 1} - ${queryGroup.appNo}`,
+            status: queryStatus
+          });
+        }
       });
     });
     
-    setAppQueries(processedAppQueries);
+    return individual;
+  }, [queries]);
+
+  // Group individual queries by application number
+  const groupedQueries = React.useMemo(() => {
+    const grouped = new Map();
+    individualQueries.forEach(query => {
+      if (!grouped.has(query.appNo)) {
+        grouped.set(query.appNo, []);
+      }
+      grouped.get(query.appNo).push(query);
+    });
+    return grouped;
+  }, [individualQueries]);
+
+  // Filter applications based on search
+  const filteredApplications = React.useMemo(() => {
+    if (!queries || queries.length === 0) return [];
+    
+    const applications = Array.from(groupedQueries.keys());
+    if (!searchTerm) return applications;
+    
+    return applications.filter(appNo => 
+      appNo.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [groupedQueries, searchTerm, queries]);
+
+  // Handle navigation
+  const handleSelectApplication = async (appNo: string) => {
+    setSelectedAppNo(appNo);
     setCurrentView('queries');
+    
+    const appQueriesFiltered = individualQueries.filter(query => query.appNo === appNo);
+    setAppQueries(appQueriesFiltered);
+    
+    setNewQueryCount(0);
   };
 
-  // Handle going back to applications view
+  const handleSelectQuery = (query: Query) => {
+    setSelectedQuery(query);
+    setCurrentView('chat');
+    loadChatMessages(query.id);
+  };
+
   const handleBackToApplications = () => {
     setCurrentView('applications');
     setSelectedAppNo('');
     setAppQueries([]);
   };
 
-  // Handle closing reply modal
-  const handleCloseReplyModal = () => {
-    setReplyModalOpen(false);
-    setSelectedQueryForReply(null);
+  const handleBackToQueries = () => {
+    setCurrentView('queries');
+    setSelectedQuery(null);
+    setChatMessages([]);
   };
 
   // Handle opening chat for a specific query
   const handleOpenChat = (query: Query & { queryIndex: number; queryText: string; queryId: string }) => {
+    console.log(`🎯 Credit Dashboard: Opening chat for query:`, {
+      queryId: query.queryId || query.id,
+      id: query.id,
+      appNo: query.appNo,
+      customerName: query.customerName
+    });
     setSelectedQueryForChat(query);
     setIsChatOpen(true);
   };
 
-  // Handle reply to a specific query
-  const handleReplyToQuery = (query: Query & { queryIndex: number; queryText: string; queryId: string }) => {
-    setSelectedQueryForReply(query);
-    setReplyModalOpen(true);
-  };  
+  const showSuccessMessage = (message = 'Success! The action was completed.') => {
+    setSuccessMessage(message);
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+    }, 3000);
+  };
 
-  // Format functions
+  // Toggle auto-refresh
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+    showSuccessMessage(autoRefresh ? 'Auto-refresh disabled' : 'Auto-refresh enabled');
+  };
+
+  // Load chat messages
+  const loadChatMessages = async (queryId: number) => {
+    try {
+      console.log(`🔄 Loading chat messages for query ${queryId}`);
+      
+      const response = await fetch(`/api/queries/${queryId}/chat`);
+      const result = await response.json();
+      
+      if (result.success) {
+        const messages = result.data || [];
+        console.log(`📬 Loaded ${messages.length} messages for query ${queryId}`);
+        
+        // Transform messages to include proper flags for ChatDisplay
+        const transformedMessages = messages.map((msg: any) => ({
+          ...msg,
+          isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
+          isReply: msg.team === 'Credit' || msg.senderRole === 'credit'
+        }));
+        
+        // Sort messages by timestamp
+        transformedMessages.sort((a: { timestamp: string }, b: { timestamp: string }) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        
+        setChatMessages(transformedMessages);
+        
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        console.error('Failed to load chat messages:', result.error);
+        showSuccessMessage('❌ Failed to load chat messages');
+      }
+    } catch (error) {
+      console.error('Error loading chat messages:', error);
+      showSuccessMessage('❌ Error loading chat messages');
+    }
+  };
+
+  // Send message
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedQuery) return;
+
+    try {
+      const response = await fetch(`/api/queries/${selectedQuery.id}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: newMessage,
+          sender: user?.name || 'Credit Team',
+          senderRole: 'credit',
+          team: 'Credit'
+        }),
+      });
+
+      if (response.ok) {
+        setNewMessage('');
+        loadChatMessages(selectedQuery.id);
+        showSuccessMessage('Message sent! 📤');
+      } else {
+        const errorData = await response.json();
+        showSuccessMessage(`❌ Error: Failed to send message. ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      showSuccessMessage('❌ Error: Failed to send message. Please try again.');
+    }
+  };
+
+  const formatDate = (timestamp: string) => {
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
   const formatLastUpdated = () => {
     return lastUpdated.toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -291,314 +412,318 @@ export default function CreditQueriesRaised() {
     });
   };
 
-  // Get grouped applications
-  const groupedApplications = queries.reduce((acc, query) => {
-    if (!acc[query.appNo]) {
-      acc[query.appNo] = {
-        appNo: query.appNo,
-        customerName: query.customerName,
-        branch: query.branch,
-        submittedAt: query.submittedAt,
-        queries: []
-      };
-    }
-    acc[query.appNo].queries.push(query);
-    return acc;
-  }, {} as Record<string, any>);
-
-  // Filter applications based on search
-  const filteredApplications = Object.values(groupedApplications).filter((app: any) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      app.appNo.toLowerCase().includes(searchLower) ||
-      app.customerName.toLowerCase().includes(searchLower) ||
-      app.branch.toLowerCase().includes(searchLower)
-    );
-  });
-
-  // Filter queries for current application
-  const filteredQueries = appQueries.filter((query) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      query.queryText.toLowerCase().includes(searchLower) ||
-      query.status.toLowerCase().includes(searchLower)
-    );
-  });
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'deferred': return 'bg-orange-100 text-orange-800';
-      case 'otc': return 'bg-blue-100 text-blue-800';
-      case 'resolved': return 'bg-gray-100 text-gray-800';
-      case 'pending-approval': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const getConnectionStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return <FaWifi className="h-4 w-4 text-green-500" />;
+      case 'connecting':
+        return <FaSync className="h-4 w-4 text-yellow-500 animate-spin" />;
+      case 'disconnected':
+        return <FaWifi className="h-4 w-4 text-red-500" />;
     }
   };
 
-  // Get priority color
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'text-red-600';
-      case 'medium': return 'text-yellow-600';
-      case 'low': return 'text-green-600';
-      default: return 'text-gray-600';
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="flex items-center space-x-2">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+          <span className="text-gray-600">Loading credit queries...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-600 mb-4">
+          <p className="text-lg font-medium">Error Loading Queries</p>
+          <p className="text-sm text-gray-600">{error?.message}</p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          className="text-green-600 hover:text-green-800 font-medium"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
-        <div className="flex items-center gap-4">
-          {currentView === 'queries' && (
-            <button
-              onClick={handleBackToApplications}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <FaArrowLeft />
-              Back to Applications
-            </button>
-          )}
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {currentView === 'applications' ? 'Credit Queries - Applications' : `Queries for ${selectedAppNo}`}
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {currentView === 'applications' 
-                ? `${filteredApplications.length} applications with queries`
-                : `${filteredQueries.length} queries in this application`
-              }
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder={currentView === 'applications' ? "Search applications..." : "Search queries..."}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          {/* Auto-refresh toggle */}
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-              autoRefresh 
-                ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-            title={autoRefresh ? "Auto-refresh enabled" : "Auto-refresh disabled"}
-          >
-            {autoRefresh ? <FaPlay className="h-4 w-4" /> : <FaPause className="h-4 w-4" />}
-            Auto
-          </button>
-
-          {/* Manual refresh */}
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading || isRefreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <FaSync className={`h-4 w-4 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Status bar */}
-      <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4 mb-6">
-        <div className="flex items-center gap-4 text-sm text-gray-600">
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' : connectionStatus === 'polling' ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
-            <span className="capitalize">{connectionStatus}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <FaClock className="h-4 w-4" />
-            <span>Last updated: {formatLastUpdated()}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <FaBell className="h-4 w-4" />
-            <span>Auto-refresh: {autoRefresh ? 'On' : 'Off'}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-12">
-          <FaSync className="h-8 w-8 text-blue-500 animate-spin mb-4" />
-          <p className="text-gray-600">Loading credit queries...</p>
+    <div className="h-full w-full bg-white overflow-hidden shadow-xl rounded-lg max-w-6xl mx-auto">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-transform">
+          {successMessage}
         </div>
       )}
 
-      {/* Error State */}
-      {isError && !isLoading && (
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full text-center">
-            <div className="text-red-600 mb-4">
-              <svg className="h-12 w-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+      {/* View 1: Applications List */}
+      {currentView === 'applications' && (
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="p-4 border-b border-gray-200 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <h1 className="text-xl font-bold text-gray-800">
+                  Credit Query Applications
+                  {newQueryCount > 0 && (
+                    <span className="ml-2 animate-bounce bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                      +{newQueryCount} NEW
+                    </span>
+                  )}
+                </h1>
+              </div>
+              <div className="flex items-center space-x-2">
+                {getConnectionStatusIcon()}
+                <span className="text-xs text-gray-500">
+                  {connectionStatus}
+                </span>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Queries</h3>
-            <p className="text-red-700 mb-4">{error?.message || 'An unexpected error occurred'}</p>
-            <button
-              onClick={handleRefresh}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Applications View */}
-      {currentView === 'applications' && !isLoading && !isError && (
-        <div>
-          {filteredApplications.length === 0 ? (
-            <div className="text-center py-12">
-              <FaComments className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">No Applications Found</h3>
-              <p className="text-gray-500">
-                {searchTerm ? 'No applications match your search criteria.' : 'No credit queries available at the moment.'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {filteredApplications.map((app: any) => (
-                <div
-                  key={app.appNo}
-                  className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow cursor-pointer bg-white"
-                  onClick={() => handleSelectApplication(app.appNo)}
+            
+            {/* Real-time Controls */}
+            <div className="mt-3 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <span className="text-xs text-gray-500">
+                  Last updated: {formatLastUpdated()}
+                </span>
+                {isRefreshing && (
+                  <span className="text-xs text-green-600 flex items-center">
+                    <FaSync className="h-3 w-3 animate-spin mr-1" />
+                    Refreshing...
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={toggleAutoRefresh}
+                  className={`text-xs px-3 py-1 rounded-full transition-colors ${
+                    autoRefresh 
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
                 >
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{app.customerName}</h3>
-                      <p className="text-sm text-gray-600">Application #{app.appNo}</p>
+                  {autoRefresh ? (
+                    <><FaPauseCircle className="inline h-3 w-3 mr-1" />Auto-refresh ON</>
+                  ) : (
+                    <><FaPlay className="inline h-3 w-3 mr-1" />Auto-refresh OFF</>
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            {/* Search */}
+            <div className="mt-4 relative">
+              <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <input
+                type="text"
+                placeholder="Search applications..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-black font-bold bg-white"
+                style={{ color: '#000000', backgroundColor: '#ffffff', fontWeight: '700' }}
+              />
+            </div>
+          </div>
+
+          {/* Application List */}
+          <div className="flex-grow overflow-y-auto p-4 space-y-3">
+            {filteredApplications.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <FaComments className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>No credit queries found</p>
+                <p className="text-xs mt-2">Queries marked for Credit team will appear here</p>
+              </div>
+            ) : (
+              filteredApplications.map((appNo) => {
+                const queries = groupedQueries.get(appNo) || [];
+                const activeQueries = queries.filter((q: Query) => q.status === 'pending').length;
+                const totalQueries = queries.length;
+                const firstQuery = queries[0];
+            
+                return (
+                  <div 
+                    key={appNo} 
+                    onClick={() => handleSelectApplication(appNo)}
+                    className="p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-green-50 hover:border-green-400 transition-colors duration-200 relative shadow-sm"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <h2 className="text-lg font-semibold text-gray-800">{appNo}</h2>
+                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+                            {totalQueries} {totalQueries === 1 ? 'Query' : 'Queries'}
+                          </span>
+                        </div>
+                        
+                        <p className="text-sm text-gray-600 mb-3">
+                          Customer: {firstQuery?.customerName || 'Unknown Customer'}
+                        </p>
+                        
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {activeQueries > 0 && (
+                            <span className="bg-orange-200 text-orange-900 px-3 py-1.5 rounded-full font-bold border border-orange-400 shadow-sm">
+                              📋 {activeQueries} Pending
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="mt-2 text-xs text-gray-500">
+                          Branch: {firstQuery?.branch || 'Unknown'}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end space-y-2">
+                        <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                          activeQueries > 0 
+                            ? 'bg-orange-100 text-orange-700' 
+                            : 'bg-green-100 text-green-700'
+                        }`}>
+                          {activeQueries > 0 ? '🔴 Active' : '🟢 Resolved'}
+                        </span>
+                        
+                        <div className="text-xs text-gray-400 text-right">
+                          Last: {queries[0] ? formatDate(queries[0].submittedAt) : 'N/A'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600">Branch: {app.branch}</p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(app.submittedAt).toLocaleDateString()}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* View 2: Queries List */}
+      {currentView === 'queries' && (
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="p-4 border-b border-gray-200 flex-shrink-0 flex items-center justify-between">
+            <div className="flex items-center">
+              <button 
+                onClick={handleBackToApplications}
+                className="p-2 rounded-full hover:bg-gray-200 mr-2"
+              >
+                <FaArrowLeft className="h-6 w-6 text-gray-600" />
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-gray-800">
+                  Queries for {selectedAppNo}
+                </h1>
+                <div className="flex items-center space-x-4 text-sm text-gray-600">
+                  <span>
+                    {appQueries.length} {appQueries.length === 1 ? 'query' : 'queries'} found
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Query List */}
+          <div className="flex-grow overflow-y-auto p-4 space-y-3">
+            {appQueries.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <p>No queries found for this application</p>
+              </div>
+            ) : (
+              appQueries.map((query, index) => (
+                <div key={`credit-query-${query.id}-${index}`} className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                  <div 
+                    onClick={() => handleSelectQuery(query)}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <span className="font-bold text-gray-700 text-lg">
+                          Query {query.queryIndex || 1}
+                        </span>
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          query.status === 'pending' ? 'bg-orange-100 text-orange-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {query.status === 'pending' ? 'Pending' : 'Resolved'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Query Details */}
+                    <div className="mt-3 p-4 bg-slate-50 rounded-lg">
+                      <p className="text-gray-700 text-sm font-bold">
+                        {query.queryText || 'No query text available'}
                       </p>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-600">
-                        {app.queries.length} {app.queries.length === 1 ? 'query' : 'queries'}
-                      </span>
-                    </div>
-                    <div className="text-blue-600 text-sm font-medium">
-                      View Queries →
-                    </div>
+                    
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       )}
 
-      {/* Queries View */}
-      {currentView === 'queries' && !isLoading && !isError && (
-        <div>
-          {filteredQueries.length === 0 ? (
-            <div className="text-center py-12">
-              <FaComments className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">No Queries Found</h3>
-              <p className="text-gray-500">
-                {searchTerm ? 'No queries match your search criteria.' : 'No queries available for this application.'}
-              </p>
+      {/* View 3: Chat/Remarks */}
+      {currentView === 'chat' && selectedQuery && (
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="p-4 border-b border-gray-200 flex-shrink-0 flex items-center justify-between">
+            <div className="flex items-center">
+              <button 
+                onClick={handleBackToQueries}
+                className="p-2 rounded-full hover:bg-gray-200 mr-3"
+              >
+                <FaArrowLeft className="h-6 w-6 text-gray-600" />
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-gray-800">
+                  Query Chat - {selectedQuery.appNo}
+                </h1>
+                <p className="text-sm text-gray-600">
+                  Customer: {selectedQuery.customerName}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredQueries.map((query, index) => (
-                <div
-                  key={`${query.queryId}-${index}`}
-                  className="border border-gray-200 rounded-lg p-6 bg-white hover:shadow-md transition-shadow"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h4 className="font-semibold text-gray-900">Query #{query.queryIndex}</h4>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(query.status)}`}>
-                          {query.status.replace('-', ' ').toUpperCase()}
-                        </span>
-                        {query.priority && (
-                          <span className={`text-xs font-medium ${getPriorityColor(query.priority)}`}>
-                            {query.priority.toUpperCase()} PRIORITY
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-gray-700 mb-3">{query.queryText}</p>
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <FaUser className="h-3 w-3" />
-                          {query.submittedBy}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <FaClock className="h-3 w-3" />
-                          {new Date(query.submittedAt).toLocaleString()}
-                        </span>
-                        {query.tat && (
-                          <span>TAT: {query.tat}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenChat(query);
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <FaComments />
-                      Chat
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReplyToQuery(query);
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <FaReply />
-                      Reply
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center space-x-2">
+              {getConnectionStatusIcon()}
             </div>
-          )}
+          </div>
+          
+          {/* Use the new ChatDisplay component */}
+          <div className="flex-1 overflow-hidden">
+            <ChatDisplay 
+              messages={chatMessages}
+              title=""
+              showTimestamp={true}
+              className="h-full"
+            />
+          </div>
+          
+          {/* Message Input */}
+          <div className="p-4 bg-white border-t border-gray-200 flex-shrink-0">
+            <div className="flex items-center space-x-4">
+              <input
+                type="text"
+                placeholder="Type your response..." 
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                className="flex-1 px-4 py-2 bg-white border-2 border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-black font-bold"
+                style={{ color: '#000000', backgroundColor: '#ffffff', fontWeight: '700' }}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!newMessage.trim()}
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <span className="hidden sm:inline">Send</span>
+                <FaPaperPlane className="h-4 w-4 ml-0 sm:ml-2" />
+              </button>
+            </div>
+          </div>
         </div>
-      )}
-
-      {/* Reply Modal */}
-      {selectedQueryForReply && (
-        <QueryReplyModal
-          queryId={selectedQueryForReply.queryId}
-          appNo={selectedQueryForReply.appNo}
-          customerName={selectedQueryForReply.customerName}
-          isOpen={replyModalOpen}
-          onClose={handleCloseReplyModal}
-          team="Credit"
-          markedForTeam={selectedQueryForReply.markedForTeam}
-          allowMessaging={true}
-        />
       )}
 
       {/* Chat Interface */}

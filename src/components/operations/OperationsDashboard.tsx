@@ -115,6 +115,13 @@ export default function OperationsDashboard() {
     setActiveTab(tab);
   };
 
+  const handleQuerySubmitted = () => {
+    // Navigate to queries-raised tab after query submission
+    setActiveTab('query-raised');
+    // Trigger refresh to show the new query
+    setRefreshTrigger(prev => prev + 1);
+  };
+
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -131,7 +138,7 @@ export default function OperationsDashboard() {
       case 'sanctioned-cases':
         return <SanctionedCases key={refreshTrigger} onRaiseQuery={handleRaiseQuery} />;
       case 'add-query':
-        return <AddQuery key={refreshTrigger} appNo={selectedAppNo} />;
+        return <AddQuery key={refreshTrigger} appNo={selectedAppNo} onQuerySubmitted={handleQuerySubmitted} />;
       case 'reports':
         return <QueryReports key={refreshTrigger} />;
       case 'waiting-approval':

@@ -5,8 +5,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   CheckCircle,
-  Badge,
-  List
+  Badge
 } from 'lucide-react';
 import { CreditTabType } from './CreditDashboard';
 
@@ -32,7 +31,7 @@ export default function CreditSidebar({
     },
     {
       id: 'queries-raised' as CreditTabType,
-      label: 'Query Raised',
+      label: 'Queries Raised',
       icon: MessageSquare,
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',
@@ -41,7 +40,7 @@ export default function CreditSidebar({
     },
     {
       id: 'queries-resolved' as CreditTabType,
-      label: 'Query Resolved',
+      label: 'Queries Resolved',
       icon: CheckCircle,
       color: 'text-green-600',
       bgColor: 'bg-green-100',

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { RefreshCw, Bell, User, ChevronDown, Building2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import NotificationCenter from '@/components/shared/NotificationCenter';
 
 interface SalesNavbarProps {
   assignedBranches: string[];
@@ -111,9 +112,7 @@ export default function SalesNavbar({
             </div>
 
             {/* Notifications */}
-            <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors">
-              <Bell className="h-5 w-5" />
-            </button>
+            <NotificationCenter team="sales" />
 
 
             {/* Profile Dropdown */}

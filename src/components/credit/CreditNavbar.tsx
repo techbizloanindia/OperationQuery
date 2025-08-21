@@ -3,19 +3,22 @@
 import React, { useState } from 'react';
 import { RefreshCw, Bell, User, ChevronDown, Building2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import NotificationCenter from '@/components/shared/NotificationCenter';
 
 interface CreditNavbarProps {
   assignedBranches: string[];
   onRefresh: () => void;
   isRefreshing: boolean;
   lastRefreshed: Date;
+  connectionStatus?: 'disconnected' | 'connecting' | 'connected' | 'polling';
 }
 
 export default function CreditNavbar({ 
   assignedBranches, 
   onRefresh, 
   isRefreshing, 
-  lastRefreshed 
+  lastRefreshed,
+  connectionStatus = 'disconnected'
 }: CreditNavbarProps) {
   const { user, logout } = useAuth();
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
@@ -32,6 +35,32 @@ export default function CreditNavbar({
     logout();
     // Redirect to login page
     window.location.href = '/login';
+  };
+
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'bg-green-100 text-green-800';
+      case 'polling':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'connecting':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-red-100 text-red-800';
+    }
+  };
+
+  const getConnectionStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return '🟢';
+      case 'polling':
+        return '🟡';
+      case 'connecting':
+        return '🔵';
+      default:
+        return '🔴';
+    }
   };
 
   return (
@@ -68,6 +97,12 @@ export default function CreditNavbar({
             <span className="text-xs text-gray-500">
               Last updated: {formatLastRefreshed(lastRefreshed)}
             </span>
+
+            {/* Connection Status */}
+            <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getConnectionStatusColor()}`}>
+              <span className="mr-1">{getConnectionStatusIcon()}</span>
+              <span className="capitalize">{connectionStatus}</span>
+            </div>
           </div>
 
           {/* Right side - Branches, Notifications, Profile */}
@@ -110,9 +145,7 @@ export default function CreditNavbar({
             </div>
 
             {/* Notifications */}
-            <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors">
-              <Bell className="h-5 w-5" />
-            </button>
+            <NotificationCenter team="credit" />
 
             {/* Profile Dropdown */}
             <div className="relative">

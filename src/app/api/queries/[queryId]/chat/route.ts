@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RemarkModel, RemarkMessage } from '@/lib/models/Remarks';
+import { ChatStorageService } from '@/lib/services/ChatStorageService';
 
 interface RemarkMessageResponse {
   id: string;
@@ -9,8 +10,8 @@ interface RemarkMessageResponse {
   sender: string;
   senderRole: string;
   timestamp: string;
-  team?: string;
-  responseText?: string;
+  team: string;
+  responseText: string;
 }
 
 // In-memory remarks storage - will be enhanced with database
@@ -107,6 +108,75 @@ export async function GET(
       )
     );
     queryRemarks = [...queryRemarks, ...inMemoryRemarks];
+    
+    // Also get messages from global message database (from query-responses API)
+    if (typeof global !== 'undefined' && global.queryMessagesDatabase) {
+      const globalMessages = global.queryMessagesDatabase
+        .filter(msg => msg.queryId === parseInt(queryId))
+        .map(msg => ({
+          id: `global-${msg.id}`,
+          queryId: queryId,
+          remark: msg.message || msg.responseText,
+          text: msg.message || msg.responseText,
+          sender: msg.sender,
+          senderRole: msg.senderRole || msg.team || 'user',
+          timestamp: msg.timestamp,
+          team: msg.team || msg.senderRole || 'operations',
+          responseText: msg.message || msg.responseText
+        }));
+        
+      // Add global messages that aren't already in the result
+      globalMessages.forEach(globalMsg => {
+        const exists = queryRemarks.some(existingMsg => 
+          existingMsg.remark === globalMsg.remark && 
+          existingMsg.sender === globalMsg.sender && 
+          Math.abs(new Date(existingMsg.timestamp).getTime() - new Date(globalMsg.timestamp).getTime()) < 5000
+        );
+        if (!exists) {
+          queryRemarks.push(globalMsg);
+        }
+      });
+      
+      console.log(`📨 Added ${globalMessages.length} messages from global message database for query ${queryId}`);
+    }
+    
+    // Also get messages from ChatStorageService (enhanced chat storage)
+    try {
+      const chatMessages = await (async () => {
+        const { ChatStorageService } = await import('@/lib/services/ChatStorageService');
+        return ChatStorageService.getChatMessages(queryId);
+      })();
+      
+      if (chatMessages && chatMessages.length > 0) {
+        const chatMessageRemarks = chatMessages.map(msg => ({
+          id: `chat-${msg._id}`,
+          queryId: queryId,
+          remark: msg.message || msg.responseText,
+          text: msg.message || msg.responseText,
+          sender: msg.sender,
+          senderRole: msg.senderRole || msg.team || 'user',
+          timestamp: msg.timestamp.toISOString(),
+          team: msg.team || msg.senderRole || 'operations',
+          responseText: msg.message || msg.responseText
+        }));
+        
+        // Add chat messages that aren't already in the result
+        chatMessageRemarks.forEach(chatMsg => {
+          const exists = queryRemarks.some(existingMsg => 
+            existingMsg.remark === chatMsg.remark && 
+            existingMsg.sender === chatMsg.sender && 
+            Math.abs(new Date(existingMsg.timestamp).getTime() - new Date(chatMsg.timestamp).getTime()) < 5000
+          );
+          if (!exists) {
+            queryRemarks.push(chatMsg);
+          }
+        });
+        
+        console.log(`💾 Added ${chatMessageRemarks.length} messages from ChatStorageService for query ${queryId}`);
+      }
+    } catch (dbError) {
+      console.warn('Failed to load chat messages from ChatStorageService:', dbError);
+    }
     
     // Remove duplicates based on content, sender, and timestamp
     const uniqueRemarks = queryRemarks.filter((remark, index, self) => 
@@ -217,6 +287,29 @@ export async function POST(
       }
     } catch (dbError) {
       console.warn('Failed to save to database, using in-memory storage:', dbError);
+    }
+
+    // Also save using ChatStorageService for enhanced chat storage
+    try {
+      const chatMessage = {
+        queryId: queryId,
+        message: messageText,
+        responseText: messageText,
+        sender: sender,
+        senderRole: senderRole,
+        team: team || senderRole,
+        timestamp: new Date(),
+        isSystemMessage: false,
+        actionType: 'message' as const
+      };
+
+      const stored = await ChatStorageService.storeChatMessage(chatMessage);
+      if (stored) {
+        console.log(`💾 Chat remark stored to database: ${stored._id}`);
+      }
+    } catch (error) {
+      console.error('Error storing chat remark to database:', error);
+      // Continue with existing flow
     }
     
     // Notify real-time subscribers

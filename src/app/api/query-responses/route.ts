@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ChatStorageService } from '@/lib/services/ChatStorageService';
+import { broadcastQueryUpdate } from '@/lib/eventStreamUtils';
 
 interface QueryResponse {
   queryId: string;
@@ -78,6 +80,73 @@ export async function POST(request: NextRequest) {
     // Add to global message database for real-time chat
     global.queryMessagesDatabase.push(messageData);
     console.log(`✅ Added message from ${team} to global message database`);
+    
+    // Broadcast the reply to all connected clients (all dashboards)
+    try {
+      console.log(`📡 Broadcasting reply from ${team} team to all dashboards`);
+      
+      const broadcastData = {
+        id: queryId,
+        appNo: appNo || `APP-${queryId}`,
+        customerName: 'Query Customer', // You may want to fetch this from query details
+        action: 'message_added',
+        team: team.toLowerCase(),
+        markedForTeam: 'both', // Notify all teams
+        newMessage: {
+          id: messageData.id,
+          text: responseText,
+          author: respondedBy || `${team} Team Member`,
+          authorTeam: team,
+          timestamp: messageData.timestamp
+        },
+        broadcast: true, // Broadcast to all teams
+        messageFrom: team,
+        priority: 'high' // High priority for replies
+      };
+      
+      // Broadcast to all teams
+      broadcastQueryUpdate(broadcastData);
+      
+      // Also broadcast specifically to each team
+      ['operations', 'sales', 'credit'].forEach(targetTeam => {
+        if (targetTeam !== team.toLowerCase()) {
+          const teamSpecificData = {
+            ...broadcastData,
+            markedForTeam: targetTeam
+          };
+          broadcastQueryUpdate(teamSpecificData);
+        }
+      });
+      
+      console.log(`🎯 Reply from ${team} team broadcasted successfully to all dashboards (operations, sales, credit)`);
+      
+    } catch (broadcastError) {
+      console.error('❌ Error broadcasting reply update:', broadcastError);
+      // Don't fail the request if broadcast fails
+    }
+    
+    // Store in MongoDB using ChatStorageService
+    try {
+      const chatMessage = {
+        queryId: queryId,
+        message: responseText,
+        responseText: responseText,
+        sender: respondedBy || `${team} Team Member`,
+        senderRole: team.toLowerCase(),
+        team: team,
+        timestamp: new Date(timestamp || Date.now()),
+        isSystemMessage: false,
+        actionType: 'message' as const
+      };
+
+      const stored = await ChatStorageService.storeChatMessage(chatMessage);
+      if (stored) {
+        console.log(`💾 Response stored to database: ${stored._id}`);
+      }
+    } catch (error) {
+      console.error('Error storing response to database:', error);
+      // Continue with existing flow
+    }
     
     // Also make API call to query-actions to ensure consistency
     try {

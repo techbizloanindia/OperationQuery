@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { broadcastQueryUpdate } from '@/lib/eventStreamUtils';
 import { logQueryUpdate } from '@/lib/queryUpdateLogger';
+import { ChatStorageService } from '@/lib/services/ChatStorageService';
 
 interface QueryAction {
   queryId: number;
@@ -54,6 +55,46 @@ declare global {
 
 // Reference to the queries database
 let queriesDatabase: any[] = [];
+
+// Archive chat history when query is approved
+async function archiveChatOnApproval(queryId: number, queryData: any, action: string) {
+  try {
+    if (!queryData) return;
+
+    const archiveReason = action === 'approve' ? 'approved' : 
+                         action === 'deferral' ? 'deferred' : 
+                         action === 'otc' ? 'otc' : 'resolved';
+
+    // Sync in-memory messages to database first
+    const inMemoryMessages = global.queryMessagesDatabase?.filter(
+      (msg: any) => msg.queryId === queryId || msg.queryId === queryId.toString()
+    ) || [];
+
+    if (inMemoryMessages.length > 0) {
+      await ChatStorageService.syncInMemoryMessages(inMemoryMessages);
+    }
+
+    // Archive the chat history
+    const archived = await ChatStorageService.archiveQueryChat(
+      queryId.toString(),
+      {
+        appNo: queryData.appNo || `APP-${queryId}`,
+        customerName: queryData.customerName || 'Unknown Customer',
+        queryTitle: queryData.title || queryData.queries?.[0]?.text || 'Query',
+        queryStatus: archiveReason,
+        markedForTeam: queryData.markedForTeam || queryData.team || 'unknown'
+      },
+      archiveReason
+    );
+
+    if (archived) {
+      console.log(`✅ Chat history archived for query ${queryId} with reason: ${archiveReason}`);
+    }
+
+  } catch (error) {
+    console.error(`Error archiving chat history for query ${queryId}:`, error);
+  }
+}
 
 // Initialize the queriesDatabase from the queries API route
 const initializeQueriesDatabase = async () => {
@@ -373,6 +414,11 @@ async function handleQueryAction(body: QueryAction & { type: string; status?: st
     if (response.ok) {
       const successData = await response.json();
       console.log('✅ Query status updated successfully via API:', successData);
+      
+      // Archive chat history if this is an approval action
+      if (['approve', 'deferral', 'otc'].includes(action) && successData.data) {
+        await archiveChatOnApproval(queryId, successData.data, action);
+      }
       
       // Broadcast real-time update when query action is successful
       if (successData.data) {
@@ -725,8 +771,31 @@ async function handleAddMessage(body: QueryMessage & { type: string }) {
     timestamp: new Date().toISOString()
   };
 
-  // Add to global message database
+  // Add to global message database for backwards compatibility
   global.queryMessagesDatabase.push(messageRecord);
+
+  // Store in MongoDB using ChatStorageService
+  try {
+    const chatMessage = {
+      queryId: queryId.toString(),
+      message,
+      responseText: message,
+      sender: addedBy || `${team} Team Member`,
+      senderRole: team ? team.toLowerCase() : 'operations',
+      team: team || 'Operations',
+      timestamp: new Date(),
+      isSystemMessage: false,
+      actionType: 'message' as const
+    };
+
+    const stored = await ChatStorageService.storeChatMessage(chatMessage);
+    if (stored) {
+      console.log(`💾 Message stored to database: ${stored._id}`);
+    }
+  } catch (error) {
+    console.error('Error storing message to database:', error);
+    // Continue with in-memory storage as fallback
+  }
 
   console.log(`💬 Message from ${team} added to global message database:`, messageRecord);
 

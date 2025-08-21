@@ -36,10 +36,6 @@ const PendingApprovals: React.FC = () => {
   const [selectedRequestForAction, setSelectedRequestForAction] = useState<any>(null);
   const [approverName, setApproverName] = useState('');
   
-  // New state for showing all remarks modal
-  const [showRemarksModal, setShowRemarksModal] = useState(false);
-  const [selectedRequestForRemarks, setSelectedRequestForRemarks] = useState<any>(null);
-  const [allRemarks, setAllRemarks] = useState<any[]>([]);
   
   // Success message state
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -141,76 +137,6 @@ const PendingApprovals: React.FC = () => {
     setShowActionModal(true);
   };
 
-  // New handler to show all remarks for a query
-  const handleShowAllRemarks = async (request: any) => {
-    setSelectedRequestForRemarks(request);
-    setShowRemarksModal(true);
-    
-    // Fetch all remarks/comments for this query
-    try {
-      const remarks = [];
-      
-      // Add original operations request remarks
-      if (request.description) {
-        remarks.push({
-          id: 'original',
-          type: 'Operations Request',
-          content: request.description,
-          author: request.requester?.name || 'Operations Team',
-          timestamp: request.submittedAt,
-          team: 'Operations'
-        });
-      }
-      
-      // If this is a query-action type, fetch additional query history
-      if (request.type === 'query-action' && request.queryId) {
-        const historyResponse = await fetch(`/api/query-actions?queryId=${request.queryId}&type=messages`);
-        if (historyResponse.ok) {
-          const historyResult = await historyResponse.json();
-          const messages = historyResult.data || [];
-          
-          // Add query messages as remarks
-          messages.forEach((msg: any, index: number) => {
-            remarks.push({
-              id: `msg-${index}`,
-              type: msg.senderRole || 'Team Message',
-              content: msg.message,
-              author: msg.sender || 'Team Member',
-              timestamp: msg.timestamp,
-              team: msg.team || msg.senderRole || 'Unknown'
-            });
-          });
-        }
-      }
-      
-      // Add any existing approval comments
-      if (request.approverComment) {
-        remarks.push({
-          id: 'approval-comment',
-          type: 'Approval Comment',
-          content: request.approverComment,
-          author: request.approver?.name || 'Approval Team',
-          timestamp: request.approvedAt || request.rejectedAt,
-          team: 'Approval'
-        });
-      }
-      
-      // Sort by timestamp
-      remarks.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      setAllRemarks(remarks);
-    } catch (error) {
-      console.error('Error fetching remarks:', error);
-      // Show basic remarks from the request
-      setAllRemarks([{
-        id: 'basic',
-        type: 'Request Description',
-        content: request.description || 'No remarks available',
-        author: request.requester?.name || 'Team Member',
-        timestamp: request.submittedAt,
-        team: 'Request'
-      }]);
-    }
-  };
 
   const processApprovalAction = async (action: 'approve' | 'reject', requestIds: string[], comment?: string, approver?: string) => {
     setProcessing(prev => [...prev, ...requestIds]);
@@ -536,11 +462,7 @@ const PendingApprovals: React.FC = () => {
                       <div className="flex items-start space-x-3">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2">
-                            <span 
-                              onClick={() => handleShowAllRemarks(request)}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer hover:underline"
-                              title="Click to view all remarks and history"
-                            >
+                            <span className="text-sm font-medium text-gray-900">
                               {request.requestId}
                             </span>
                             <span className="capitalize text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
@@ -621,103 +543,6 @@ const PendingApprovals: React.FC = () => {
           </div>
         </div>
 
-        {/* All Remarks Modal */}
-        {showRemarksModal && selectedRequestForRemarks && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-gray-900">
-                  All Remarks & History - {selectedRequestForRemarks.requestId}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowRemarksModal(false);
-                    setSelectedRequestForRemarks(null);
-                    setAllRemarks([]);
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              
-              {/* Request Summary */}
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-2 mb-2">
-                  <h4 className="font-semibold text-gray-900">Request Summary:</h4>
-                  {(selectedRequestForRemarks as any).proposedAction && 
-                    getProposedActionBadge((selectedRequestForRemarks as any).proposedAction)
-                  }
-                </div>
-                <p className="text-sm text-gray-700">{selectedRequestForRemarks.title}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Submitted by: {selectedRequestForRemarks.requester?.name} • 
-                  Team: {selectedRequestForRemarks.requester?.department} • 
-                  Date: {formatDate(selectedRequestForRemarks.submittedAt)}
-                </p>
-              </div>
-              
-              {/* All Remarks Timeline */}
-              <div className="overflow-y-auto max-h-96">
-                <div className="space-y-4">
-                  {allRemarks.length > 0 ? (
-                    allRemarks.map((remark, index) => (
-                      <div key={remark.id} className="flex space-x-3">
-                        <div className="flex-shrink-0">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold ${
-                            remark.team === 'Operations' ? 'bg-blue-500' :
-                            remark.team === 'Sales' ? 'bg-green-500' :
-                            remark.team === 'Credit' ? 'bg-purple-500' :
-                            remark.team === 'Approval' ? 'bg-orange-500' :
-                            'bg-gray-500'
-                          }`}>
-                            {remark.team === 'Operations' ? 'OP' :
-                             remark.team === 'Sales' ? 'SA' :
-                             remark.team === 'Credit' ? 'CR' :
-                             remark.team === 'Approval' ? 'AP' :
-                             'TM'}
-                          </div>
-                        </div>
-                        <div className="flex-1 bg-white border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <span className="font-semibold text-gray-900">{remark.author}</span>
-                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                                {remark.type}
-                              </span>
-                            </div>
-                            <span className="text-xs text-gray-500">
-                              {formatDate(new Date(remark.timestamp))}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{remark.content}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                      <p>No remarks available</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => {
-                    setShowRemarksModal(false);
-                    setSelectedRequestForRemarks(null);
-                    setAllRemarks([]);
-                  }}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Enhanced Action Modal for Three-Stage Approval */}
         {showActionModal && selectedRequestForAction && (

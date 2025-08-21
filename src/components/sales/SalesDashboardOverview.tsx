@@ -5,10 +5,8 @@ import {
   MessageSquare,
   CheckCircle,
   Clock,
-  AlertTriangle,
-  Edit3
+  AlertTriangle
 } from 'lucide-react';
-import ModernRemarksInterface from '../shared/ModernRemarksInterface';
 
 interface QueryStats {
   total: number;
@@ -36,10 +34,6 @@ export default function SalesDashboardOverview({ operationsUpdates = [] }: Sales
   });
   const [isLoading, setIsLoading] = useState(true);
   const [recentQueries, setRecentQueries] = useState<any[]>([]);
-  
-  // Remarks interface state
-  const [showRemarksModal, setShowRemarksModal] = useState(false);
-  const [selectedQuery, setSelectedQuery] = useState<any>(null);
 
   useEffect(() => {
     fetchDashboardStats();
@@ -129,18 +123,6 @@ export default function SalesDashboardOverview({ operationsUpdates = [] }: Sales
     } catch (error) {
       console.error('Error fetching recent queries:', error);
     }
-  };
-
-  // Handle opening remarks modal
-  const handleOpenRemarks = (query: any) => {
-    setSelectedQuery(query);
-    setShowRemarksModal(true);
-  };
-
-  // Handle closing remarks modal
-  const handleCloseRemarks = () => {
-    setShowRemarksModal(false);
-    setSelectedQuery(null);
   };
 
   const statCards = [
@@ -292,14 +274,6 @@ export default function SalesDashboardOverview({ operationsUpdates = [] }: Sales
                     </p>
                   </div>
                   <div className="flex items-center space-x-3">
-                    <button
-                      onClick={() => handleOpenRemarks(query)}
-                      className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg transition-colors"
-                      title="Add Remarks"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      <span>Remarks</span>
-                    </button>
                     <div className="text-sm text-gray-500">
                       {new Date(query.createdAt).toLocaleTimeString('en-US', {
                         hour: '2-digit',
@@ -320,21 +294,6 @@ export default function SalesDashboardOverview({ operationsUpdates = [] }: Sales
         </div>
       </div>
 
-      {/* Modern Remarks Interface */}
-      {showRemarksModal && selectedQuery && (
-        <ModernRemarksInterface
-          isOpen={showRemarksModal}
-          onClose={handleCloseRemarks}
-          queryId={selectedQuery.queryId || selectedQuery.id}
-          queryTitle={selectedQuery.title || `Query for ${selectedQuery.appNo}`}
-          customerName={selectedQuery.customerName}
-          currentUser={{
-            name: 'Sales User',
-            role: 'sales',
-            team: 'sales'
-          }}
-        />
-      )}
     </div>
   );
 }
