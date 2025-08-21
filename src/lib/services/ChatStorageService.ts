@@ -71,37 +71,44 @@ export class ChatStorageService {
   }
 
   /**
-   * Store a chat message to database
+   * Store a chat message to database - ISOLATED by queryId
+   * Ensures message is stored only for the specific query
    */
   static async storeChatMessage(message: Omit<ChatMessage, '_id'>): Promise<ChatMessage | null> {
     try {
       const collection = await this.getMessagesCollection();
       
-      // Check for duplicates
+      // Ensure queryId is stored consistently as string
+      const normalizedMessage = {
+        ...message,
+        queryId: message.queryId.toString()
+      };
+      
+      // Check for duplicates within the same query only
       const existing = await collection.findOne({
-        queryId: message.queryId,
-        message: message.message,
-        sender: message.sender,
+        queryId: normalizedMessage.queryId,
+        message: normalizedMessage.message,
+        sender: normalizedMessage.sender,
         timestamp: {
-          $gte: new Date(new Date(message.timestamp).getTime() - 5000), // 5 second window
-          $lte: new Date(new Date(message.timestamp).getTime() + 5000)
+          $gte: new Date(new Date(normalizedMessage.timestamp).getTime() - 5000), // 5 second window
+          $lte: new Date(new Date(normalizedMessage.timestamp).getTime() + 5000)
         }
       });
 
       if (existing) {
-        console.log('Duplicate message detected, skipping storage');
+        console.log(`🔒 Duplicate detected in query ${normalizedMessage.queryId} thread, skipping`);
         return existing as ChatMessage;
       }
 
-      // Insert new message
+      // Insert new message with normalized queryId
       const result = await collection.insertOne({
-        ...message,
-        timestamp: new Date(message.timestamp),
+        ...normalizedMessage,
+        timestamp: new Date(normalizedMessage.timestamp),
         createdAt: new Date(),
         isRead: false
       });
 
-      console.log(`✅ Stored chat message to database: ${result.insertedId}`);
+      console.log(`✅ Stored message in isolated thread for query ${normalizedMessage.queryId}: ${result.insertedId}`);
       
       // Return the stored message
       const storedMessage = await collection.findOne({ _id: result.insertedId });
@@ -114,16 +121,28 @@ export class ChatStorageService {
   }
 
   /**
-   * Get chat messages for a query
+   * Get chat messages for a query - ISOLATED by queryId
+   * Ensures each query has its own separate chat thread
    */
   static async getChatMessages(queryId: string): Promise<ChatMessage[]> {
     try {
       const collection = await this.getMessagesCollection();
+      
+      // STRICT: Only get messages for this specific queryId
+      // Convert to string for consistent comparison
+      const queryIdStr = queryId.toString();
+      
       const messages = await collection
-        .find({ queryId })
+        .find({
+          $or: [
+            { queryId: queryIdStr },
+            { queryId: parseInt(queryIdStr) } // Handle both string and number formats
+          ]
+        })
         .sort({ timestamp: 1 })
         .toArray();
 
+      console.log(`🔒 ChatStorage: Retrieved ${messages.length} isolated messages for query ${queryId}`);
       return messages as ChatMessage[];
     } catch (error) {
       console.error('Error retrieving chat messages:', error);

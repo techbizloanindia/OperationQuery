@@ -262,12 +262,15 @@ async function createApprovalRequest(params: {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const updateData = {
       queryId,
-      status: 'waiting for approval',
+      status: 'waiting for approval', // Correct status for approval workflow
       lastUpdated: new Date().toISOString(),
       approvalRequestId: approvalRequestId,
       proposedAction: action,
       proposedBy: teamMember,
-      proposedAt: new Date().toISOString()
+      proposedAt: new Date().toISOString(),
+      // Keep query visible in dashboards while waiting for approval
+      isResolved: false,
+      markedForTeam: queryDetails?.markedForTeam || 'operations'
     };
     
     console.log('📝 Sending approval status update to queries API:', updateData);
@@ -281,9 +284,34 @@ async function createApprovalRequest(params: {
     });
     
     if (response.ok) {
-      console.log('✅ Query status updated to pending-approval');
+      console.log('✅ Query status updated to "waiting for approval"');
+      
+      // Broadcast update to all dashboards
+      try {
+        const updateBroadcast = {
+          id: queryDetails?.id || queryId,
+          appNo: queryDetails?.appNo || `APP-${queryId}`,
+          customerName: queryDetails?.customerName || 'Unknown Customer',
+          branch: queryDetails?.branch || 'Unknown Branch',
+          status: 'waiting for approval',
+          priority: queryDetails?.priority || 'medium',
+          team: queryDetails?.team || 'operations',
+          markedForTeam: queryDetails?.markedForTeam || 'operations',
+          createdAt: queryDetails?.createdAt || new Date().toISOString(),
+          submittedBy: queryDetails?.submittedBy || 'Operations User',
+          action: 'pending-approval' as const,
+          proposedAction: action,
+          proposedBy: teamMember,
+          approvalRequestId: approvalRequestId
+        };
+        
+        broadcastQueryUpdate(updateBroadcast);
+        console.log('📡 Broadcasted approval pending status to all dashboards');
+      } catch (broadcastError) {
+        console.warn('Failed to broadcast approval pending status:', broadcastError);
+      }
     } else {
-      console.warn('⚠️ Failed to update query status to pending-approval');
+      console.warn('⚠️ Failed to update query status to "waiting for approval"');
     }
   } catch (error) {
     console.error('Error updating query status to pending-approval:', error);
@@ -381,24 +409,37 @@ async function handleQueryAction(body: QueryAction & { type: string; status?: st
 
   // Update the query status in the queries database
   try {
-    // Determine the resolved status based on action - use request-* format for proper status flow
-    const resolvedStatus = status || (action === 'approve' ? 'request-approved' : action === 'deferral' ? 'request-deferral' : action === 'otc' ? 'request-otc' : action);
+    // For direct actions (not going through approval), use the final status
+    const resolvedStatus = status || (
+      action === 'approve' ? 'approved' :
+      action === 'deferral' ? 'deferred' :
+      action === 'otc' ? 'otc' :
+      action
+    );
     
     // Try to update via API call first for better consistency
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     
+    const now = new Date();
     const updateData = {
       queryId,
       status: resolvedStatus,
-      resolvedAt: new Date().toISOString(),
+      resolvedAt: now.toISOString(),
       resolvedBy: teamMember,
       resolutionReason: action,
       assignedTo: assignedTo || null,
       assignedToBranch: assignedToBranch || null,
       remarks: remarks || '',
-      // Always mark as resolved when action is taken
+      // Always mark as resolved when action is taken directly
       isResolved: true,
-      isIndividualQuery: true // Most actions are on individual queries
+      isIndividualQuery: true, // Most actions are on individual queries
+      // Add approval tracking for direct actions
+      approvedBy: teamMember,
+      approvedAt: now.toISOString(),
+      approvalDate: now.toISOString(),
+      approvalStatus: action === 'approve' ? 'approved' :
+                     action === 'deferral' ? 'deferral' :
+                     action === 'otc' ? 'otc' : null
     };
     
     console.log('📝 Sending update to queries API:', updateData);

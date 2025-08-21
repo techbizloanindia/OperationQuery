@@ -51,15 +51,43 @@ export default function CreditQueriesRaised() {
     }
   });
 
+  // Extract individual queries with sequential numbering
+  const individualQueries = React.useMemo(() => {
+    if (!queries || queries.length === 0) return [];
+    
+    const individual: Array<Query & { queryIndex: number; queryText: string; queryId: string }> = [];
+    
+    queries.forEach((queryGroup: Query) => {
+      queryGroup.queries.forEach((query, index) => {
+        const queryStatus = query.status || queryGroup.status;
+        const isResolved = ['request-approved', 'request-deferral', 'request-otc', 'approved', 'resolved', 'deferred', 'otc'].includes(queryStatus);
+        
+        if (!isResolved) {
+          individual.push({
+            ...queryGroup,
+            queryIndex: individual.length + 1, // Sequential numbering using array index + 1
+            queryText: query.text,
+            queryId: query.id,
+            id: parseInt(query.id.split('-')[0]) + index,
+            title: `Query ${individual.length + 1} - ${queryGroup.appNo}`,
+            status: queryStatus
+          });
+        }
+      });
+    });
+    
+    return individual;
+  }, [queries]);
+
   // Filter queries based on search term
-  const filteredQueries = queries?.filter((query: Query) => {
+  const filteredQueries = individualQueries.filter((query) => {
     const searchLower = searchTerm.toLowerCase();
     return (
       query.appNo.toLowerCase().includes(searchLower) ||
       query.customerName.toLowerCase().includes(searchLower) ||
       query.branch.toLowerCase().includes(searchLower)
     );
-  }) || [];
+  });
 
   return (
     <div className="p-4">
@@ -100,15 +128,31 @@ export default function CreditQueriesRaised() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {filteredQueries.map((query: Query) => (
-            <div key={query.id} className="border rounded-lg p-4 hover:shadow-md transition">
-              <div className="flex justify-between">
-                <h3 className="font-semibold">{query.customerName}</h3>
+          {filteredQueries.map((query, index) => (
+            <div key={`credit-query-${query.queryId || query.id}-${index}`} className="border rounded-lg p-4 hover:shadow-md transition">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center space-x-3">
+                  <span className="font-bold text-gray-700 text-lg">
+                    Query {query.queryIndex}
+                  </span>
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                    query.status === 'pending' ? 'bg-orange-100 text-orange-800' :
+                    'bg-green-100 text-green-800'
+                  }`}>
+                    {query.status === 'pending' ? 'Pending' : 'Resolved'}
+                  </span>
+                </div>
                 <span className="text-sm text-gray-500">App #: {query.appNo}</span>
               </div>
-              <div className="mt-2">
-                <p className="text-sm text-gray-700">{query.queries[0]?.text || 'No query text'}</p>
+              
+              <h3 className="font-semibold mb-2">{query.customerName}</h3>
+              
+              <div className="mt-3 p-4 bg-slate-50 rounded-lg">
+                <p className="text-gray-700 text-sm font-bold">
+                  {query.queryText || 'No query text available'}
+                </p>
               </div>
+              
               <div className="mt-3 flex justify-between text-xs text-gray-500">
                 <span>Branch: {query.branch}</span>
                 <span>Submitted: {new Date(query.submittedAt).toLocaleString()}</span>

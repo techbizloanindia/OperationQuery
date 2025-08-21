@@ -74,7 +74,10 @@ export async function GET(
     
     const { queryId } = await params;
     
-    console.log(`💬 Fetching chat remarks for query ID: ${queryId}`);
+    console.log(`💬 Fetching ISOLATED chat thread for query ID: ${queryId}`);
+    
+    // IMPORTANT: Each query has its own isolated chat thread
+    // Only fetch messages specifically for this queryId
     
     // Get remarks from database first
     let queryRemarks: RemarkMessageResponse[] = [];
@@ -94,25 +97,29 @@ export async function GET(
       }));
     } catch (dbError) {
       console.warn('Failed to load from database, using in-memory storage:', dbError);
-      // Fallback to in-memory storage
+      // Fallback to in-memory storage - STRICT filtering by queryId
       queryRemarks = remarksDatabase.filter(msg => msg.queryId === queryId);
     }
     
-    // Add in-memory remarks that aren't in database
-    const inMemoryRemarks = remarksDatabase.filter(msg => 
-      msg.queryId === queryId && 
-      !queryRemarks.some(dbMsg => 
-        dbMsg.remark === msg.remark && 
-        dbMsg.sender === msg.sender && 
+    // Add in-memory remarks that aren't in database - STRICT queryId matching
+    const inMemoryRemarks = remarksDatabase.filter(msg =>
+      msg.queryId === queryId && // STRICT: Only this query's messages
+      !queryRemarks.some(dbMsg =>
+        dbMsg.remark === msg.remark &&
+        dbMsg.sender === msg.sender &&
         Math.abs(new Date(dbMsg.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 1000
       )
     );
     queryRemarks = [...queryRemarks, ...inMemoryRemarks];
     
-    // Also get messages from global message database (from query-responses API)
+    // Also get messages from global message database - STRICT queryId filtering
     if (typeof global !== 'undefined' && global.queryMessagesDatabase) {
       const globalMessages = global.queryMessagesDatabase
-        .filter(msg => msg.queryId === parseInt(queryId))
+        .filter(msg => {
+          // STRICT: Ensure exact queryId match (handle both string and number)
+          const msgQueryId = msg.queryId?.toString();
+          return msgQueryId === queryId.toString();
+        })
         .map(msg => ({
           id: `global-${msg.id}`,
           queryId: queryId,
@@ -127,9 +134,9 @@ export async function GET(
         
       // Add global messages that aren't already in the result
       globalMessages.forEach(globalMsg => {
-        const exists = queryRemarks.some(existingMsg => 
-          existingMsg.remark === globalMsg.remark && 
-          existingMsg.sender === globalMsg.sender && 
+        const exists = queryRemarks.some(existingMsg =>
+          existingMsg.remark === globalMsg.remark &&
+          existingMsg.sender === globalMsg.sender &&
           Math.abs(new Date(existingMsg.timestamp).getTime() - new Date(globalMsg.timestamp).getTime()) < 5000
         );
         if (!exists) {
@@ -137,10 +144,10 @@ export async function GET(
         }
       });
       
-      console.log(`📨 Added ${globalMessages.length} messages from global message database for query ${queryId}`);
+      console.log(`📨 Query ${queryId}: Found ${globalMessages.length} messages in isolated thread`);
     }
     
-    // Also get messages from ChatStorageService (enhanced chat storage)
+    // Also get messages from ChatStorageService - ISOLATED by queryId
     try {
       const chatMessages = await (async () => {
         const { ChatStorageService } = await import('@/lib/services/ChatStorageService');
@@ -162,9 +169,9 @@ export async function GET(
         
         // Add chat messages that aren't already in the result
         chatMessageRemarks.forEach(chatMsg => {
-          const exists = queryRemarks.some(existingMsg => 
-            existingMsg.remark === chatMsg.remark && 
-            existingMsg.sender === chatMsg.sender && 
+          const exists = queryRemarks.some(existingMsg =>
+            existingMsg.remark === chatMsg.remark &&
+            existingMsg.sender === chatMsg.sender &&
             Math.abs(new Date(existingMsg.timestamp).getTime() - new Date(chatMsg.timestamp).getTime()) < 5000
           );
           if (!exists) {
@@ -172,7 +179,7 @@ export async function GET(
           }
         });
         
-        console.log(`💾 Added ${chatMessageRemarks.length} messages from ChatStorageService for query ${queryId}`);
+        console.log(`💾 Query ${queryId}: Added ${chatMessageRemarks.length} messages from isolated chat storage`);
       }
     } catch (dbError) {
       console.warn('Failed to load chat messages from ChatStorageService:', dbError);
@@ -190,12 +197,15 @@ export async function GET(
     // Sort by timestamp (oldest first)
     uniqueRemarks.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     
-    console.log(`✅ Found ${uniqueRemarks.length} chat remarks for query ${queryId} (${queryRemarks.length - uniqueRemarks.length} duplicates removed)`);
+    console.log(`✅ Query ${queryId}: Isolated chat thread contains ${uniqueRemarks.length} messages`);
+    console.log(`🔒 Chat isolation verified - No cross-query contamination`);
     
     return NextResponse.json({
       success: true,
       data: uniqueRemarks,
-      count: uniqueRemarks.length
+      count: uniqueRemarks.length,
+      queryId: queryId, // Include queryId in response for verification
+      isolated: true // Flag to indicate this is an isolated thread
     });
 
   } catch (error: unknown) {

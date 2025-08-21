@@ -14,6 +14,7 @@ interface QueryMessage {
   sender?: string;
   senderRole?: string;
   status?: 'pending' | 'approved' | 'deferred' | 'otc' | 'resolved' | 'waiting for approval';
+  queryNumber?: number;
 }
 
 interface Query {
@@ -234,11 +235,11 @@ export default function CreditQueriesRaisedEnhanced() {
         if (!isResolved) {
           individual.push({
             ...queryGroup,
-            queryIndex: index + 1,
+            queryIndex: (query as any).queryNumber || (index + 1),
             queryText: query.text,
-            queryId: query.id,
-            id: parseInt(query.id.split('-')[0]) + index,
-            title: `Query ${index + 1} - ${queryGroup.appNo}`,
+            queryId: query.id || `${queryGroup.id}-${index}`,
+            id: parseInt(query.id?.split('-')[0] || queryGroup.id.toString()) + index,
+            title: `Query ${(query as any).queryNumber || (index + 1)} - ${queryGroup.appNo}`,
             status: queryStatus
           });
         }
@@ -639,7 +640,7 @@ export default function CreditQueriesRaisedEnhanced() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <span className="font-bold text-gray-700 text-lg">
-                          Query {query.queryIndex || 1}
+                          Query {query.queries?.[0]?.queryNumber || query.queryIndex || 1}
                         </span>
                         <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                           query.status === 'pending' ? 'bg-orange-100 text-orange-800' :
@@ -731,7 +732,7 @@ export default function CreditQueriesRaisedEnhanced() {
         <ModernChatInterface
           isOpen={isChatOpen}
           onClose={() => setIsChatOpen(false)}
-          queryId={selectedQueryForChat.queryId}
+          queryId={selectedQueryForChat.queryId || selectedQueryForChat.id.toString()}
           queryTitle={selectedQueryForChat.queryText || `Query for ${selectedQueryForChat.appNo}`}
           customerName={selectedQueryForChat.customerName}
           currentUser={{

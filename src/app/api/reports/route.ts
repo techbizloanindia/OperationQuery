@@ -74,16 +74,43 @@ export async function GET(request: NextRequest) {
           if (queriesData.success) {
             const queries = queriesData.data || [];
             
-            // Calculate real-time statistics
+            // Enhance queries with approval tracking fields for reports
+            const enhancedQueries = queries.map((query: any) => ({
+              ...query,
+              // Ensure approval fields are included
+              approvedBy: query.approvedBy || query.resolvedBy || null,
+              approvedAt: query.approvedAt || query.resolvedAt || null,
+              approvalDate: query.approvalDate || query.resolvedAt || null,
+              approvalStatus: query.approvalStatus || (
+                query.status === 'approved' ? 'approved' :
+                query.status === 'deferred' ? 'deferral' :
+                query.status === 'otc' ? 'otc' : null
+              ),
+              // Format dates for reports
+              formattedApprovalDate: query.approvedAt || query.resolvedAt ?
+                new Date(query.approvedAt || query.resolvedAt).toLocaleDateString('en-US') : null,
+              formattedApprovalTime: query.approvedAt || query.resolvedAt ?
+                new Date(query.approvedAt || query.resolvedAt).toLocaleTimeString('en-US') : null
+            }));
+            
+            // Calculate real-time statistics with approval tracking
             const stats = {
               total: queries.length,
               pending: queries.filter((q: any) => q.status === 'pending').length,
               approved: queries.filter((q: any) => q.status === 'approved').length,
               deferred: queries.filter((q: any) => q.status === 'deferred').length,
               otc: queries.filter((q: any) => q.status === 'otc').length,
-              resolved: queries.filter((q: any) => q.status === 'resolved').length,
-              pendingApproval: queries.filter((q: any) => q.status === 'pending-approval').length,
-              lastUpdated: new Date().toISOString()
+              resolved: queries.filter((q: any) => ['approved', 'deferred', 'otc', 'resolved'].includes(q.status)).length,
+              pendingApproval: queries.filter((q: any) => q.status === 'waiting for approval' || q.status === 'pending-approval').length,
+              lastUpdated: new Date().toISOString(),
+              // Add approval tracking stats
+              approvedToday: queries.filter((q: any) => {
+                if (!q.approvedAt && !q.resolvedAt) return false;
+                const approvalDate = new Date(q.approvedAt || q.resolvedAt);
+                const today = new Date();
+                return approvalDate.toDateString() === today.toDateString();
+              }).length,
+              averageApprovalTime: calculateAverageApprovalTime(queries)
             };
             
             return NextResponse.json({
@@ -91,8 +118,22 @@ export async function GET(request: NextRequest) {
               data: {
                 reports: mockReports,
                 stats: stats,
-                queries: queries,
-                type: 'operations'
+                queries: enhancedQueries,
+                type: 'operations',
+                exportFields: [
+                  'appNo',
+                  'customerName',
+                  'branch',
+                  'status',
+                  'priority',
+                  'createdAt',
+                  'submittedBy',
+                  'approvedBy',
+                  'formattedApprovalDate',
+                  'formattedApprovalTime',
+                  'approvalStatus',
+                  'approverComment'
+                ]
               }
             });
           }
@@ -244,5 +285,31 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  }
+}
+
+// Helper function to calculate average approval time
+function calculateAverageApprovalTime(queries: any[]): string {
+  const approvedQueries = queries.filter(q =>
+    (q.status === 'approved' || q.status === 'deferred' || q.status === 'otc') &&
+    q.createdAt && (q.approvedAt || q.resolvedAt)
+  );
+  
+  if (approvedQueries.length === 0) return 'N/A';
+  
+  const totalTime = approvedQueries.reduce((sum, q) => {
+    const created = new Date(q.createdAt).getTime();
+    const approved = new Date(q.approvedAt || q.resolvedAt).getTime();
+    return sum + (approved - created);
+  }, 0);
+  
+  const avgMs = totalTime / approvedQueries.length;
+  const avgHours = Math.round(avgMs / (1000 * 60 * 60));
+  
+  if (avgHours < 24) {
+    return `${avgHours} hours`;
+  } else {
+    const avgDays = Math.round(avgHours / 24);
+    return `${avgDays} days`;
   }
 }

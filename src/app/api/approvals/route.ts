@@ -208,14 +208,15 @@ export async function POST(request: NextRequest) {
           
           if (action === 'approve') {
             // Approve the proposed action - mark query as resolved with the proposed action
-            const finalStatus = approvalRequest.proposedAction === 'approve' ? 'request-approved' : 
-                               approvalRequest.proposedAction === 'deferral' ? 'request-deferral' : 
-                               approvalRequest.proposedAction === 'otc' ? 'request-otc' : 'resolved';
+            const finalStatus = approvalRequest.proposedAction === 'approve' ? 'approved' :
+                               approvalRequest.proposedAction === 'deferral' ? 'deferred' :
+                               approvalRequest.proposedAction === 'otc' ? 'otc' : 'resolved';
             
+            const now = new Date();
             const updateData = {
               queryId: approvalRequest.queryId,
               status: finalStatus,
-              resolvedAt: new Date().toISOString(),
+              resolvedAt: now.toISOString(),
               resolvedBy: approverName,
               resolutionReason: approvalRequest.proposedAction,
               assignedTo: approvalRequest.assignedTo || null,
@@ -223,7 +224,14 @@ export async function POST(request: NextRequest) {
               remarks: approvalRequest.remarks || '',
               approverComment: comment || '',
               isResolved: true,
-              isIndividualQuery: true
+              isIndividualQuery: true,
+              // Add approval tracking fields
+              approvedBy: approverName,
+              approvedAt: now.toISOString(),
+              approvalDate: now.toISOString(),
+              approvalStatus: approvalRequest.proposedAction === 'approve' ? 'approved' :
+                             approvalRequest.proposedAction === 'deferral' ? 'deferral' :
+                             approvalRequest.proposedAction === 'otc' ? 'otc' : 'approved'
             };
             
             const response = await fetch(`${baseUrl}/api/queries`, {
@@ -257,24 +265,33 @@ export async function POST(request: NextRequest) {
               console.warn('Failed to broadcast approval update:', broadcastError);
             }
 
-            // Add system message about approval
+            // Add system message about approval with proper status
+            const statusText = finalStatus === 'approved' ? 'APPROVED' :
+                              finalStatus === 'deferred' ? 'DEFERRED' :
+                              finalStatus === 'otc' ? 'marked as OTC' : 'RESOLVED';
+            
             const approvalMessage = {
               id: `${Date.now().toString()}-${Math.random().toString(36).substring(2, 9)}`,
               queryId: approvalRequest.queryId,
-              message: `✅ ${approvalRequest.proposedAction.charAt(0).toUpperCase() + approvalRequest.proposedAction.slice(1)} request APPROVED by ${approverName}\n\n📝 Approval Comment: ${comment || 'No additional comments'}\n\n🕒 Approved on: ${new Date().toLocaleString('en-US', {
+              message: `✅ Query ${statusText} by ${approverName}\n\n📝 Approval Comment: ${comment || 'No additional comments'}\n\n🕒 Approved on: ${now.toLocaleString('en-US', {
                 year: 'numeric',
-                month: 'long', 
+                month: 'long',
                 day: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: true
-              })}\n\n✅ Query has been ${finalStatus} and moved to Query Resolved section.`,
+              })}\n\n✅ Query has been moved to Queries Resolved section with status: ${finalStatus.toUpperCase()}.`,
               sender: approverName,
               senderRole: 'Approval Team',
-              timestamp: new Date().toISOString(),
+              timestamp: now.toISOString(),
               team: 'Approval',
               actionType: 'approved',
-              isSystemMessage: true
+              isSystemMessage: true,
+              metadata: {
+                approvedBy: approverName,
+                approvalStatus: finalStatus,
+                approvalDate: now.toISOString()
+              }
             };
 
             global.queryMessagesDatabase = global.queryMessagesDatabase || [];

@@ -65,6 +65,11 @@ export interface IQuery {
   isResolved?: boolean;
   isIndividualQuery?: boolean;
   approverComment?: string;
+  // New approval tracking fields
+  approvedBy?: string; // Name of the approver
+  approvedAt?: Date; // Timestamp when approved
+  approvalDate?: Date; // Date of approval (for reports)
+  approvalStatus?: 'approved' | 'otc' | 'deferral'; // Final approval status
 }
 
 // MongoDB operations class
@@ -132,13 +137,34 @@ export class QueryModel {
     }
   }
 
-  // Update one query
+  // Update one query with approval tracking
   static async updateOne(filter: any, update: any): Promise<{ modifiedCount: number }> {
     try {
       const collection = await this.getCollection();
+      
+      // Add approval tracking fields if status is being approved
+      const enhancedUpdate = { ...update };
+      if (update.status && ['approved', 'request-approved', 'request-otc', 'request-deferral'].includes(update.status)) {
+        if (update.resolvedBy && !update.approvedBy) {
+          enhancedUpdate.approvedBy = update.resolvedBy;
+        }
+        if (update.resolvedAt && !update.approvedAt) {
+          enhancedUpdate.approvedAt = update.resolvedAt;
+          enhancedUpdate.approvalDate = update.resolvedAt;
+        }
+        // Set approval status based on the status
+        if (update.status.includes('approved')) {
+          enhancedUpdate.approvalStatus = 'approved';
+        } else if (update.status.includes('otc')) {
+          enhancedUpdate.approvalStatus = 'otc';
+        } else if (update.status.includes('deferral')) {
+          enhancedUpdate.approvalStatus = 'deferral';
+        }
+      }
+      
       const result = await collection.updateOne(
         filter,
-        { $set: { ...update, lastUpdated: new Date() } }
+        { $set: { ...enhancedUpdate, lastUpdated: new Date() } }
       );
       return { modifiedCount: result.modifiedCount || 0 };
     } catch (error) {
@@ -232,7 +258,7 @@ export class QueryModel {
     }
   }
 
-  // Transform MongoDB document to IQuery
+  // Transform MongoDB document to IQuery with approval fields
   private static transformQuery(doc: any): IQuery {
     return {
       ...doc,
@@ -243,6 +269,11 @@ export class QueryModel {
       lastUpdated: doc.lastUpdated ? (doc.lastUpdated instanceof Date ? doc.lastUpdated : new Date(doc.lastUpdated)) : undefined,
       proposedAt: doc.proposedAt ? (doc.proposedAt instanceof Date ? doc.proposedAt : new Date(doc.proposedAt)) : undefined,
       revertedAt: doc.revertedAt ? (doc.revertedAt instanceof Date ? doc.revertedAt : new Date(doc.revertedAt)) : undefined,
+      // Transform approval tracking fields
+      approvedAt: doc.approvedAt ? (doc.approvedAt instanceof Date ? doc.approvedAt : new Date(doc.approvedAt)) : undefined,
+      approvalDate: doc.approvalDate ? (doc.approvalDate instanceof Date ? doc.approvalDate : new Date(doc.approvalDate)) : undefined,
+      approvedBy: doc.approvedBy,
+      approvalStatus: doc.approvalStatus,
       remarks: (doc.remarks || []).map((remark: any) => ({
         ...remark,
         timestamp: remark.timestamp instanceof Date ? remark.timestamp : new Date(remark.timestamp),

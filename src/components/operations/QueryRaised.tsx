@@ -17,6 +17,7 @@ interface QueryMessage {
   sender?: string;
   senderRole?: string;
   status?: 'pending' | 'approved' | 'deferred' | 'otc' | 'resolved' | 'waiting for approval';
+  queryNumber?: number;
 }
 
 interface Query {
@@ -485,7 +486,7 @@ export default function QueryRaised() {
     }
   });
 
-  // Extract individual queries for display - include all queries in raised cases
+  // Extract individual queries for display with sequential numbering
   const individualQueries = React.useMemo(() => {
     if (!queries || queries.length === 0) return [];
     
@@ -500,11 +501,11 @@ export default function QueryRaised() {
         if (!isResolved) {
           individual.push({
             ...queryGroup,
-            queryIndex: index + 1,
+            queryIndex: individual.length + 1, // Sequential numbering using array index + 1
             queryText: query.text,
-            queryId: query.id,
-            id: parseInt(query.id.split('-')[0]) + index, // Unique ID for each query
-            title: `Query ${index + 1} - ${queryGroup.appNo}`,
+            queryId: query.id || `${queryGroup.id}-${index}`,
+            id: parseInt(query.id?.split('-')[0] || queryGroup.id.toString()) + index, // Unique ID for each query
+            title: `Query ${individual.length + 1} - ${queryGroup.appNo}`,
             status: queryStatus
           });
         }
@@ -1053,7 +1054,7 @@ export default function QueryRaised() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <span className="font-bold text-gray-700 text-lg">
-                          Query {query.queryIndex || 1} - {query.appNo}
+                          Query {query.queryIndex} - {query.appNo}
                         </span>
                         {query.status === 'waiting for approval' && (
                           <span className="text-blue-600 text-xs ml-2" title="Waiting for approval">⏳</span>
@@ -1332,7 +1333,7 @@ export default function QueryRaised() {
         <ModernChatInterface
           isOpen={isChatOpen}
           onClose={() => setIsChatOpen(false)}
-          queryId={selectedQueryForChat.queryId}
+          queryId={selectedQueryForChat.queryId || selectedQueryForChat.id.toString()}
           queryTitle={selectedQueryForChat.queryText || `Query for ${selectedQueryForChat.appNo}`}
           customerName={selectedQueryForChat.customerName}
           currentUser={{

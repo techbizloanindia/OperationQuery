@@ -16,7 +16,7 @@ interface QueryItem {
   text: string;
   timestamp: string;
   sender: string;
-  status: 'pending' | 'resolved' | 'approved' | 'deferred' | 'otc' | 'pending-approval' | 'waiting for approval' | 'request-approved' | 'request-deferral' | 'request-otc';
+  status: 'pending' | 'resolved' | 'approved' | 'deferred' | 'otc' | 'pending-approval' | 'waiting for approval';
   queryNumber?: number;
   proposedAction?: string;
   sentTo?: string[];
@@ -87,18 +87,24 @@ const generateQueryNumber = async (): Promise<number> => {
     const { connectDB } = await import('@/lib/mongodb');
     const { db } = await connectDB();
     
-    const lastQuery = await db.collection('queries')
-      .findOne({}, { sort: { 'queries.queryNumber': -1 } });
+    // Find the highest query number across all queries
+    const pipeline = [
+      { $unwind: '$queries' },
+      { $group: { _id: null, maxQueryNumber: { $max: '$queries.queryNumber' } } }
+    ];
     
-    if (lastQuery && lastQuery.queries && lastQuery.queries.length > 0) {
-      const highestNumber = Math.max(...lastQuery.queries.map((q: any) => q.queryNumber || 0));
-      global.globalQueryCounter = Math.max(global.globalQueryCounter || 0, highestNumber);
+    const result = await db.collection('queries').aggregate(pipeline).toArray();
+    
+    if (result.length > 0 && result[0].maxQueryNumber) {
+      global.globalQueryCounter = Math.max(global.globalQueryCounter || 0, result[0].maxQueryNumber);
+      console.log(`📊 Found highest query number in DB: ${result[0].maxQueryNumber}`);
     }
   } catch (error) {
-    console.log('Using in-memory counter for query numbering');
+    console.log('Using in-memory counter for query numbering:', error);
   }
   
   global.globalQueryCounter = (global.globalQueryCounter || 0) + 1;
+  console.log(`🔢 Generated new query number: ${global.globalQueryCounter}`);
   return global.globalQueryCounter;
 };
 
@@ -494,43 +500,59 @@ export async function PATCH(request: NextRequest) {
     try {
       if (isIndividualQuery) {
         // Update specific query within a group
+        const updateFields: any = {
+          'queries.$.status': updateData.status,
+          'queries.$.proposedAction': updateData.proposedAction,
+          'queries.$.proposedBy': updateData.proposedBy,
+          'queries.$.proposedAt': updateData.proposedAt ? new Date(updateData.proposedAt) : undefined,
+          'queries.$.resolvedAt': updateData.resolvedAt ? new Date(updateData.resolvedAt) : undefined,
+          'queries.$.resolvedBy': updateData.resolvedBy,
+          'queries.$.approverComment': updateData.approverComment,
+          lastUpdated: new Date()
+        };
+        
+        // Add approval tracking fields if query is being approved
+        if (updateData.status && ['approved', 'deferred', 'otc'].includes(updateData.status)) {
+          updateFields.approvedBy = updateData.approvedBy || updateData.resolvedBy;
+          updateFields.approvedAt = updateData.approvedAt || updateData.resolvedAt ? new Date(updateData.approvedAt || updateData.resolvedAt) : new Date();
+          updateFields.approvalDate = updateData.approvalDate || updateData.resolvedAt ? new Date(updateData.approvalDate || updateData.resolvedAt) : new Date();
+          updateFields.approvalStatus = updateData.approvalStatus || updateData.status;
+        }
+        
         const result = await db.collection('queries').updateOne(
           { 'queries.id': queryId },
-          { 
-            $set: { 
-              'queries.$.status': updateData.status,
-              'queries.$.proposedAction': updateData.proposedAction,
-              'queries.$.proposedBy': updateData.proposedBy,
-              'queries.$.proposedAt': updateData.proposedAt ? new Date(updateData.proposedAt) : undefined,
-              'queries.$.resolvedAt': updateData.resolvedAt ? new Date(updateData.resolvedAt) : undefined,
-              'queries.$.resolvedBy': updateData.resolvedBy,
-              'queries.$.approverComment': updateData.approverComment,
-              lastUpdated: new Date()
-            }
-          }
+          { $set: updateFields }
         );
         
         if (result.modifiedCount > 0) {
           mongoUpdated = true;
-          // MongoDB query updated
+          console.log(`✅ MongoDB: Updated individual query ${queryId}`);
         }
       } else {
         // Update entire query group
+        const updateFields = {
+          ...updateData,
+          lastUpdated: new Date(),
+          resolvedAt: updateData.resolvedAt ? new Date(updateData.resolvedAt) : undefined,
+          proposedAt: updateData.proposedAt ? new Date(updateData.proposedAt) : undefined
+        };
+        
+        // Add approval tracking fields if query is being approved
+        if (updateData.status && ['approved', 'deferred', 'otc'].includes(updateData.status)) {
+          updateFields.approvedBy = updateData.approvedBy || updateData.resolvedBy;
+          updateFields.approvedAt = updateData.approvedAt || updateData.resolvedAt ? new Date(updateData.approvedAt || updateData.resolvedAt) : new Date();
+          updateFields.approvalDate = updateData.approvalDate || updateData.resolvedAt ? new Date(updateData.approvalDate || updateData.resolvedAt) : new Date();
+          updateFields.approvalStatus = updateData.approvalStatus || updateData.status;
+        }
+        
         const result = await db.collection('queries').updateOne(
           { id: queryId },
-          { 
-            $set: { 
-              ...updateData,
-              lastUpdated: new Date(),
-              resolvedAt: updateData.resolvedAt ? new Date(updateData.resolvedAt) : undefined,
-              proposedAt: updateData.proposedAt ? new Date(updateData.proposedAt) : undefined
-            }
-          }
+          { $set: updateFields }
         );
         
         if (result.modifiedCount > 0) {
           mongoUpdated = true;
-          console.log(`✅ MongoDB: Updated query group ${queryId}`);
+          console.log(`✅ MongoDB: Updated query group ${queryId} with approval tracking`);
         }
       }
     } catch (dbError) {
@@ -555,17 +577,22 @@ export async function PATCH(request: NextRequest) {
               };
               
               // Also update the main query group if all sub-queries are resolved
-              const allResolved = queryGroup.queries.every((q: any) => 
-                ['request-approved', 'request-deferral', 'request-otc', 'approved', 'deferred', 'otc', 'resolved'].includes(q.status || queryGroup.status)
+              const allResolved = queryGroup.queries.every((q: any) =>
+                ['approved', 'deferred', 'otc', 'resolved'].includes(q.status || queryGroup.status)
               );
               
-              if (allResolved || ['request-approved', 'request-deferral', 'request-otc', 'approved', 'deferred', 'otc', 'resolved'].includes(updateData.status)) {
+              if (allResolved || ['approved', 'deferred', 'otc', 'resolved'].includes(updateData.status)) {
                 queryGroup.status = updateData.status;
                 queryGroup.resolvedAt = updateData.resolvedAt;
                 queryGroup.resolvedBy = updateData.resolvedBy;
                 queryGroup.resolutionReason = updateData.resolutionReason;
                 queryGroup.assignedTo = updateData.assignedTo;
                 queryGroup.lastUpdated = new Date().toISOString();
+                // Add approval tracking fields
+                queryGroup.approvedBy = updateData.approvedBy || updateData.resolvedBy;
+                queryGroup.approvedAt = updateData.approvedAt || updateData.resolvedAt;
+                queryGroup.approvalDate = updateData.approvalDate || updateData.resolvedAt;
+                queryGroup.approvalStatus = updateData.approvalStatus || updateData.status;
               }
               
               queriesDatabase[i] = queryGroup;
@@ -641,10 +668,14 @@ export async function PATCH(request: NextRequest) {
         markedForTeam: foundQuery.markedForTeam,
         createdAt: foundQuery.createdAt,
         submittedBy: foundQuery.submittedBy,
-        action: ['request-approved', 'request-deferral', 'request-otc', 'approved', 'deferred', 'otc', 'resolved'].includes(updateData.status) ? 'approved' as const : 'updated' as const,
+        action: ['approved', 'deferred', 'otc', 'resolved'].includes(updateData.status) ? 'approved' as const : 'updated' as const,
         resolvedBy: updateData.resolvedBy,
         resolvedAt: updateData.resolvedAt,
-        approverComment: updateData.approverComment || updateData.resolutionReason
+        approverComment: updateData.approverComment || updateData.resolutionReason,
+        // Include approval tracking in broadcast
+        approvedBy: updateData.approvedBy || updateData.resolvedBy,
+        approvedAt: updateData.approvedAt || updateData.resolvedAt,
+        approvalStatus: updateData.approvalStatus || updateData.status
       };
       
       console.log(`📡 Broadcasting query update: ${updateBroadcast.appNo} status: ${updateBroadcast.status}`);
@@ -662,7 +693,7 @@ export async function PATCH(request: NextRequest) {
           markedForTeam: foundQuery.markedForTeam,
           createdAt: foundQuery.createdAt,
           submittedBy: foundQuery.submittedBy,
-          action: ['request-approved', 'request-deferral', 'request-otc', 'approved', 'deferred', 'otc', 'resolved'].includes(updateData.status) ? 'resolved' : 'updated'
+          action: ['approved', 'deferred', 'otc', 'resolved'].includes(updateData.status) ? 'resolved' : 'updated'
         });
         
         // Broadcast via SSE

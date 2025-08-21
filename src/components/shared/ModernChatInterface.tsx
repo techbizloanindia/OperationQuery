@@ -91,12 +91,15 @@ export default function ModernChatInterface({
   };
 
   useEffect(() => {
-    if (isOpen && queryId) {
+    if (isOpen && queryId && queryId !== 'undefined' && queryId !== 'NaN') {
+      // Clear previous messages when switching to a different query
+      setMessages([]);
       fetchMessages();
       startRealtimeService();
       scrollToBottom(false);
     } else {
       stopRealtimeService();
+      setMessages([]); // Clear messages when closing
     }
 
     return () => {
@@ -110,14 +113,25 @@ export default function ModernChatInterface({
 
   const fetchMessages = async () => {
     try {
+      // Validate queryId before making API call
+      if (!queryId || queryId === 'undefined' || queryId === 'NaN') {
+        console.warn('Invalid queryId provided:', queryId);
+        setMessages([]);
+        return;
+      }
+
       const response = await fetch(`/api/queries/${queryId}/chat`);
       const result = await response.json();
       
       if (result.success) {
         setMessages(result.data || []);
+      } else {
+        console.error('Failed to fetch messages:', result.error);
+        setMessages([]);
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
+      setMessages([]);
     }
   };
 
@@ -160,6 +174,13 @@ export default function ModernChatInterface({
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
 
+    // Validate queryId before sending
+    if (!queryId || queryId === 'undefined' || queryId === 'NaN') {
+      console.error('Cannot send message: Invalid queryId:', queryId);
+      alert('Error: Invalid query ID. Please refresh and try again.');
+      return;
+    }
+
     const tempMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
       queryId,
@@ -172,6 +193,7 @@ export default function ModernChatInterface({
     };
 
     setMessages(prev => [...prev, tempMessage]);
+    const messageToSend = newMessage.trim();
     setNewMessage('');
 
     try {
@@ -181,7 +203,7 @@ export default function ModernChatInterface({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: newMessage.trim(),
+          message: messageToSend,
           sender: currentUser.name,
           senderRole: currentUser.role,
           team: currentUser.team
@@ -198,7 +220,7 @@ export default function ModernChatInterface({
           status: 'delivered' as const
         };
         
-        setMessages(prev => prev.map(msg => 
+        setMessages(prev => prev.map(msg =>
           msg.id === tempMessage.id ? sentMessage : msg
         ));
 
