@@ -62,6 +62,10 @@ interface QueryData {
   isResolved?: boolean;
   isIndividualQuery?: boolean;
   approverComment?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  approvalDate?: string;
+  approvalStatus?: string;
 }
 
 // Use global database for persistence across requests
