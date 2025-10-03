@@ -1057,13 +1057,6 @@ export default function QueryResolved() {
                           <p><span className="font-medium">Team:</span> {selectedQuery.sendTo?.join(', ') || 'Operations'}</p>
                         </div>
                       </div>
-                      
-                      <button
-                        onClick={() => window.open(`/api/debug-chat-history?queryId=${selectedQuery.appNo}`, '_blank')}
-                        className="mt-4 text-blue-600 hover:text-blue-800 text-sm underline"
-                      >
-                        🔍 Debug Chat History (New Tab)
-                      </button>
                     </div>
                   )}
                 </div>
