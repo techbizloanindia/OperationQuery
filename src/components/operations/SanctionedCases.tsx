@@ -188,62 +188,6 @@ export default function SanctionedCases({ onRaiseQuery }: SanctionedCasesProps) 
 
   return (
     <>
-      {/* Simple Header */}
-      <div className="mb-4 bg-white p-4 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800">Sanctioned Applications</h3>
-            <p className="text-sm text-gray-600">
-              {sanctionedCases.length > 0 
-                ? `${sanctionedCases.length} applications ready for processing` 
-                : 'No sanctioned applications found'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Last updated: {formatLastUpdated()}
-              {autoRefresh && <span className="ml-2 text-gray-600">• Auto-refreshing</span>}
-            </p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className="text-center">
-              <div className="text-xl font-semibold text-gray-800">{sanctionedCases.length}</div>
-              <div className="text-xs text-gray-600">Total Cases</div>
-            </div>
-            <div className="flex flex-col space-y-2">
-              <button
-                onClick={() => fetchSanctionedCases(false)}
-                className="text-xs px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
-              >
-                Refresh Now
-              </button>
-              <button
-                onClick={toggleAutoRefresh}
-                className={`text-xs px-3 py-1 border ${
-                  autoRefresh 
-                    ? 'text-gray-700 bg-gray-200 border-gray-300' 
-                    : 'text-gray-600 bg-gray-100 border-gray-300'
-                }`}
-              >
-                {autoRefresh ? 'Pause Auto-refresh' : 'Enable Auto-refresh'}
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        {/* Simple Notification */}
-        {sanctionedCases.length > 0 && (
-          <div className="mt-3 bg-gray-50 border border-gray-200 p-3">
-            <div className="flex items-center justify-center text-sm">
-              <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
-                <span className="text-gray-700">
-                  Real-time updates enabled - New uploads will appear automatically
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Simple Table Layout */}
       <div className="bg-white border border-gray-200">
         <table className="min-w-full">
