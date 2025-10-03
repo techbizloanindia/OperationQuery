@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatStorageService } from '@/lib/services/ChatStorageService';
 import { connectToDatabase } from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,12 +32,20 @@ export async function GET(request: NextRequest) {
 
     // Also check the queries collection to see if this query exists
     const queriesCollection = db.collection('queries');
+    
+    // Build query filter with proper ObjectId handling
+    const queryFilter: any[] = [
+      { appNo: queryId },
+      { id: queryId }
+    ];
+    
+    // Only add _id filter if queryId is a valid ObjectId
+    if (ObjectId.isValid(queryId)) {
+      queryFilter.push({ _id: new ObjectId(queryId) });
+    }
+    
     const queryExists = await queriesCollection.findOne({
-      $or: [
-        { appNo: queryId },
-        { _id: queryId },
-        { id: queryId }
-      ]
+      $or: queryFilter
     });
 
     // Get chat messages via ChatStorageService
@@ -66,8 +75,9 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Debug chat history error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
