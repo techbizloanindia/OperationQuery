@@ -58,72 +58,91 @@ export default function SalesNavbar({
   };
 
   return (
-    <nav className="navbar sales-navbar bg-white shadow-sm border-b border-gray-200">
+    <nav className="navbar sales-navbar bg-white shadow-lg border-b border-gray-200 sticky top-0 z-50">
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Left side - Logo and Title */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 lg:space-x-4 min-w-0 flex-1">
+            <div className="flex items-center space-x-2 lg:space-x-3">
               <div className="flex-shrink-0">
-                <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
-                  <span className="text-white font-bold text-lg">B</span>
+                <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-sm">
+                  <span className="text-white font-bold text-lg">📊</span>
                 </div>
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-blue-600" style={{ color: '#2563eb !important' }}>BizLoan</h1>
-                <p className="text-sm text-gray-500" style={{ color: '#6b7280 !important' }}>Sales Dashboard</p>
+              <div className="hidden sm:block min-w-0">
+                <h1 className="text-lg lg:text-xl font-bold text-blue-600 truncate">BizLoan Sales</h1>
+                <p className="text-xs lg:text-sm text-gray-600 truncate">Sales Dashboard</p>
+              </div>
+              <div className="sm:hidden">
+                <h1 className="text-lg font-bold text-blue-600">Sales</h1>
               </div>
             </div>
             
-            {/* Refresh button */}
+            {/* Refresh button - Always visible */}
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
-              className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${
+              className={`flex-shrink-0 inline-flex items-center px-2 lg:px-3 py-2 border border-transparent text-xs lg:text-sm font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 ${
                 isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
               }`}
+              title="Refresh Dashboard"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="font-medium">Refresh</span>
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''} lg:mr-1`} />
+              <span className="hidden lg:inline">Refresh</span>
             </button>
 
-            {/* Last refreshed indicator */}
-            <span className="text-sm font-medium text-gray-700 bg-gray-50 px-3 py-1 rounded-full" style={{ color: '#374151 !important', backgroundColor: '#f9fafb !important' }}>
-              Last updated: {formatLastRefreshed(lastRefreshed)}
+            {/* Last refreshed indicator - Hidden on mobile */}
+            <span className="hidden md:inline-block text-xs text-gray-500 whitespace-nowrap">
+              Updated: {formatLastRefreshed(lastRefreshed)}
             </span>
+          </div>
 
-            {/* App Number Search */}
-            <form onSubmit={handleSearchSubmit} className="flex items-center space-x-2">
+          {/* Center - App Number Search */}
+          <div className="hidden lg:flex items-center flex-1 max-w-md mx-4">
+            <form onSubmit={handleSearchSubmit} className="w-full">
               <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
                 <input
                   type="text"
                   value={localSearchTerm}
                   onChange={(e) => setLocalSearchTerm(e.target.value)}
-                  placeholder="Search by App No..."
-                  className="w-48 px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-md placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  style={{ color: '#111827 !important', backgroundColor: '#ffffff !important' }}
+                  placeholder="Search by Application Number..."
+                  className="w-full pl-10 pr-10 py-2 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-colors"
                 />
                 {localSearchTerm && (
                   <button
                     type="button"
                     onClick={handleClearSearch}
-                    className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Clear search"
                   >
-                    ×
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
                   </button>
                 )}
               </div>
-              <button
-                type="submit"
-                className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                style={{ backgroundColor: '#2563eb !important', color: '#ffffff !important' }}
-              >
-                Search
-              </button>
             </form>
           </div>
 
-          {/* Right side - Branches, Notifications, Settings, Profile */}
+          {/* Mobile search button */}
+          <div className="lg:hidden flex-shrink-0">
+            <button
+              type="button"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Search"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Right side - Branches, Notifications, Profile */}
           <div className="flex items-center space-x-4">
             {/* Assigned Branches Dropdown */}
             <div className="relative">

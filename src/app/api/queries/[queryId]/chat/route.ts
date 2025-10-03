@@ -75,35 +75,66 @@ export async function GET(
     const { queryId } = await params;
     const normalizedQueryId = queryId.toString().trim();
     
-    console.log(`💬 Fetching ISOLATED chat thread for query ID: ${normalizedQueryId}`);
+    console.log(`💬 Chat API: Fetching ISOLATED chat thread for query ID: ${normalizedQueryId}`);
     
     // CRITICAL: Each query has its own isolated chat thread
     // Only fetch messages specifically for THIS queryId with ZERO contamination
     
     let queryRemarks: RemarkMessageResponse[] = [];
 
-    // ONLY SOURCE: Get messages from ChatStorageService (MongoDB)
-    // Single source of truth to prevent duplicates
+    // ONLY SOURCE: Get messages from ChatStorageService (MongoDB) - ULTRA-STRICT ISOLATION
+    // Single source of truth to prevent duplicates and cross-query contamination
     try {
       const chatMessages = await ChatStorageService.getChatMessages(normalizedQueryId);
       
       if (chatMessages && chatMessages.length > 0) {
-        queryRemarks = chatMessages.map(msg => ({
+        // CRITICAL: Server-side validation to ensure ZERO cross-query contamination
+        const validatedMessages = chatMessages.filter(msg => {
+          const msgQueryId = msg.queryId?.toString().trim();
+          const isValid = msgQueryId === normalizedQueryId;
+          
+          if (!isValid) {
+            console.error(`🚫 CRITICAL: Rejected contaminated message in Chat API - Target: "${normalizedQueryId}", Actual: "${msgQueryId}"`);
+          }
+          
+          return isValid;
+        });
+        
+        if (validatedMessages.length !== chatMessages.length) {
+          console.error(`🚨 SECURITY ALERT: Filtered ${chatMessages.length - validatedMessages.length} contaminated messages from Chat API response for query ${normalizedQueryId}`);
+        }
+        
+        queryRemarks = validatedMessages.map(msg => ({
           id: `db-${msg._id?.toString() || Date.now()}`,
-          queryId: normalizedQueryId,
+          queryId: normalizedQueryId, // Always use normalized ID to prevent contamination
           remark: msg.message || msg.responseText,
           text: msg.message || msg.responseText,
           sender: msg.sender,
           senderRole: msg.senderRole || msg.team || 'user',
           timestamp: msg.timestamp.toISOString(),
           team: msg.team || msg.senderRole || 'operations',
-          responseText: msg.message || msg.responseText
+          responseText: msg.message || msg.responseText,
+          // Server validation flags
+          serverValidated: true,
+          originalQueryId: msg.queryId
         }));
         
-        console.log(`✅ Loaded ${queryRemarks.length} messages from ChatStorageService for query ${normalizedQueryId}`);
+        console.log(`✅ Chat API: Loaded ${queryRemarks.length} messages from ChatStorageService for query ${normalizedQueryId}`);
+        
+        // Log message details for debugging contamination
+        queryRemarks.forEach((remark, index) => {
+          console.log(`  📝 Chat API Message ${index + 1}:`, {
+            id: remark.id,
+            queryId: remark.queryId,
+            sender: remark.sender,
+            senderRole: remark.senderRole,
+            team: remark.team,
+            messagePreview: remark.remark?.substring(0, 30) + '...'
+          });
+        });
       }
     } catch (dbError) {
-      console.error('Failed to load from ChatStorageService:', dbError);
+      console.error('❌ Chat API: Failed to load from ChatStorageService:', dbError);
       // Return empty array instead of trying RemarkModel to avoid duplicates
       queryRemarks = [];
     }
@@ -125,8 +156,17 @@ export async function GET(
     // Sort by timestamp (oldest first)
     uniqueRemarks.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     
-    console.log(`✅ Query ${queryId}: Isolated chat thread contains ${uniqueRemarks.length} messages`);
-    console.log(`🔒 Chat isolation verified - No cross-query contamination`);
+    console.log(`✅ Chat API: Query ${queryId} isolated chat thread contains ${uniqueRemarks.length} messages`);
+    console.log(`🔒 Chat API: Chat isolation verified - No cross-query contamination`);
+    
+    // Final validation: Check for any sales/credit team contamination in this specific context
+    const teamDistribution = uniqueRemarks.reduce((acc: any, remark) => {
+      const team = remark.team || remark.senderRole || 'unknown';
+      acc[team] = (acc[team] || 0) + 1;
+      return acc;
+    }, {});
+    
+    console.log(`📊 Chat API: Team message distribution for query ${queryId}:`, teamDistribution);
     
     return NextResponse.json({
       success: true,
@@ -160,7 +200,19 @@ export async function POST(
     const { queryId } = await params;
     const normalizedQueryId = queryId.toString().trim();
     const body = await request.json();
-    const { remark, message, sender, senderRole, team } = body;
+    const { remark, message, sender, senderRole, team, queryId: bodyQueryId } = body;
+    
+    // CRITICAL: Validate queryId consistency between URL and body
+    if (bodyQueryId && bodyQueryId.toString().trim() !== normalizedQueryId) {
+      console.error(`🚫 SECURITY ALERT: QueryId mismatch - URL: "${normalizedQueryId}", Body: "${bodyQueryId}"`);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'QueryId mismatch detected - potential contamination attempt' 
+        },
+        { status: 400 }
+      );
+    }
     
     // Use message if remark is not provided (for compatibility)
     const messageText = remark || message;
@@ -175,13 +227,15 @@ export async function POST(
       );
     }
     
-    // Check for duplicates in MongoDB only (removed global database check)
-    // This prevents contamination from the global in-memory store
+    console.log(`📝 Chat API POST: Adding message to ISOLATED thread for query ${normalizedQueryId}`);
+    
+    // Enhanced duplicate check with stricter validation
     try {
       const recentMessages = await ChatStorageService.getChatMessages(normalizedQueryId);
       const isDuplicate = recentMessages.some(msg => 
         msg.message === messageText &&
         msg.sender === sender &&
+        msg.queryId === normalizedQueryId && // Additional queryId validation
         Date.now() - new Date(msg.timestamp).getTime() < 5000 // Within 5 seconds
       );
       
@@ -198,7 +252,8 @@ export async function POST(
             senderRole: senderRole,
             timestamp: new Date().toISOString(),
             team: team || senderRole,
-            responseText: messageText
+            responseText: messageText,
+            isDuplicate: true
           },
           message: 'Message already exists (duplicate prevented)'
         });
@@ -225,15 +280,61 @@ export async function POST(
 
       storedMessage = await ChatStorageService.storeChatMessage(chatMessage);
       if (storedMessage) {
-        console.log(`✅ Chat message stored to MongoDB: ${storedMessage._id}`);
+        console.log(`✅ Chat message stored to MongoDB (chat_messages): ${storedMessage._id}`);
       }
     } catch (error) {
       console.error('Error storing chat message to MongoDB:', error);
       throw new Error('Failed to store message to database');
     }
     
-    // REMOVED: RemarkModel storage to prevent duplicates
-    // Only using ChatStorageService as single source of truth
+    // CRITICAL: Also store in Query model's remarks array for Operations team visibility
+    try {
+      const { connectDB } = await import('@/lib/mongodb');
+      const { db } = await connectDB();
+      const { ObjectId } = await import('mongodb');
+      
+      const newRemark = {
+        id: `remark-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        text: messageText,
+        author: sender,
+        authorRole: senderRole,
+        authorTeam: team || senderRole,
+        timestamp: new Date(),
+        isEdited: false
+      };
+      
+      // Try to find and update the query document
+      // Try multiple ID formats to ensure we find the right document
+      const queryFilter: any = {
+        $or: [
+          { id: normalizedQueryId },
+          { 'queries.id': normalizedQueryId }
+        ]
+      };
+      
+      // If it looks like an ObjectId, add that to the filter
+      if (ObjectId.isValid(normalizedQueryId)) {
+        queryFilter.$or.push({ _id: new ObjectId(normalizedQueryId) });
+      }
+      
+      // Update the query document to add this remark
+      const updateResult = await db.collection('queries').updateOne(
+        queryFilter,
+        { 
+          $push: { remarks: newRemark } as any,
+          $set: { lastUpdated: new Date() } as any
+        }
+      );
+      
+      if (updateResult.modifiedCount > 0) {
+        console.log(`✅ Remark added to Query model for Operations team visibility`);
+      } else {
+        console.warn(`⚠️ Could not update Query model - query ${normalizedQueryId} may not exist in queries collection`);
+      }
+    } catch (remarkError) {
+      console.error('❌ Error adding remark to Query model:', remarkError);
+      // Don't throw - message is already stored in ChatStorageService
+    }
     
     // Create response object
     const newRemark: RemarkMessageResponse = {
@@ -251,12 +352,49 @@ export async function POST(
     // Notify real-time subscribers
     notifySubscribers(normalizedQueryId, newRemark);
     
-    console.log(`💬 Added new chat message for query ${normalizedQueryId} (MongoDB only, no global contamination)`);
+    console.log(`✅ Chat API: Added new message for query ${normalizedQueryId}:`, {
+      messageId: newRemark.id,
+      queryId: normalizedQueryId,
+      sender: newRemark.sender,
+      senderRole: newRemark.senderRole,
+      team: newRemark.team,
+      messageLength: messageText.length,
+      timestamp: newRemark.timestamp,
+      isolationVerified: true,
+      storedInDB: !!storedMessage
+    });
+    
+    // Immediate verification - try to retrieve the message we just stored
+    try {
+      const verificationMessages = await ChatStorageService.getChatMessages(normalizedQueryId);
+      const justStored = verificationMessages.find(msg => 
+        msg.message === messageText && 
+        msg.sender === sender &&
+        Math.abs(new Date(msg.timestamp).getTime() - new Date().getTime()) < 10000 // Within 10 seconds
+      );
+      
+      if (justStored) {
+        console.log(`✅ Chat API: Verified message storage - message is retrievable:`, {
+          storedId: justStored._id,
+          queryId: justStored.queryId,
+          message: justStored.message.substring(0, 50) + '...'
+        });
+      } else {
+        console.warn(`⚠️ Chat API: Warning - just stored message not found in retrieval for query ${normalizedQueryId}`);
+      }
+    } catch (verifyError) {
+      console.error('❌ Chat API: Failed to verify message storage:', verifyError);
+    }
     
     return NextResponse.json({
       success: true,
       data: newRemark,
-      message: 'Chat message added successfully'
+      message: 'Chat message added successfully',
+      debug: {
+        queryId: normalizedQueryId,
+        team: newRemark.team,
+        senderRole: newRemark.senderRole
+      }
     });
 
   } catch (error: unknown) {

@@ -174,12 +174,37 @@ const fetchQueries = async (userBranches: string[] = [], appNoFilter?: string): 
     
     // Filter queries marked specifically for credit team only
     const filteredQueries = result.data.filter((queryData: any) => {
-      return queryData.markedForTeam === 'credit' ||
+      const isCreditQuery = queryData.markedForTeam === 'credit' ||
              queryData.sendToCredit === true ||
              queryData.sendTo === 'Credit' ||
              (Array.isArray(queryData.sendTo) && queryData.sendTo.includes('Credit')) ||
              queryData.team === 'credit';
+      
+      // Log potential sales contamination
+      if (!isCreditQuery && (
+        queryData.markedForTeam === 'sales' || 
+        queryData.sendToSales === true ||
+        queryData.sendTo === 'Sales' ||
+        (Array.isArray(queryData.sendTo) && queryData.sendTo.includes('Sales'))
+      )) {
+        console.warn('🚨 Credit Dashboard: Filtering out SALES query that was returned by API:', {
+          id: queryData.id,
+          appNo: queryData.appNo,
+          markedForTeam: queryData.markedForTeam,
+          sendTo: queryData.sendTo,
+          team: queryData.team
+        });
+      }
+      
+      return isCreditQuery;
     });
+    
+    console.log(`🎯 Credit Dashboard: Filtered ${result.data.length} queries down to ${filteredQueries.length} credit queries`);
+    
+    if (result.data.length > filteredQueries.length) {
+      const filtered = result.data.length - filteredQueries.length;
+      console.log(`🔍 Credit Dashboard: Filtered out ${filtered} non-credit queries from API response`);
+    }
     
     // Convert the API response to the format expected by the component
     const queries = filteredQueries.map((queryData: any) => ({
@@ -787,41 +812,103 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
     });
   };
 
-  // Load chat messages
+  // Load chat messages with enhanced isolation validation
   const loadChatMessages = async (queryId: number) => {
     try {
-      console.log(`🔄 Loading chat messages for query ${queryId}`);
+      // CRITICAL FIX: Ensure we use the numeric queryId for consistent chat isolation
+      const numericQueryId = extractNumericQueryId(queryId);
+      const queryIdStr = numericQueryId.toString();
       
-      const response = await fetch(`/api/queries/${queryId}/chat`);
+      console.log(`🔄 Credit Dashboard: Loading chat messages for query ${queryIdStr} (converted from ${queryId})`);
+      
+      const response = await fetch(`/api/queries/${numericQueryId}/chat`);
       const result = await response.json();
       
       if (result.success) {
         const messages = result.data || [];
-        console.log(`📬 Loaded ${messages.length} messages for query ${queryId}`);
+        console.log(`📬 Credit Dashboard: Loaded ${messages.length} messages for query ${queryIdStr}`);
+        
+        // CRITICAL: Validate that ALL messages belong to this specific query using numeric ID
+        const validMessages = messages.filter((msg: any) => {
+          const msgQueryId = msg.queryId?.toString();
+          const msgNumericId = extractNumericQueryId(msgQueryId || '0').toString();
+          const isValidQuery = msgNumericId === queryIdStr;
+          
+          if (!isValidQuery) {
+            console.error(`🚨 CONTAMINATION DETECTED: Message from query ${msgQueryId} (numeric: ${msgNumericId}) found in query ${queryIdStr}!`, {
+              messageId: msg.id,
+              sender: msg.sender,
+              team: msg.team,
+              message: msg.message
+            });
+          }
+          
+          return isValidQuery;
+        });
+        
+        if (validMessages.length !== messages.length) {
+          const contaminated = messages.length - validMessages.length;
+          console.warn(`⚠️ Credit Dashboard: Filtered out ${contaminated} contaminated messages from other queries`);
+        }
+        
+        // Log message details to debug contamination
+        validMessages.forEach((msg: any, index: number) => {
+          console.log(`  📝 Message ${index + 1}:`, {
+            id: msg.id,
+            queryId: msg.queryId,
+            sender: msg.sender,
+            senderRole: msg.senderRole,
+            team: msg.team,
+            messagePreview: msg.message?.substring(0, 50) + '...',
+            timestamp: msg.timestamp
+          });
+        });
+        
+        // Check for potential contamination from sales messages
+        const salesMessages = validMessages.filter((msg: any) => 
+          msg.team === 'Sales' || msg.senderRole === 'sales'
+        );
+        
+        if (salesMessages.length > 0) {
+          console.warn(`⚠️ Credit Dashboard: Found ${salesMessages.length} SALES messages in credit query ${queryIdStr} - potential contamination!`);
+          salesMessages.forEach((msg: any, index: number) => {
+            console.warn(`  🚨 Sales Message ${index + 1}:`, {
+              id: msg.id,
+              queryId: msg.queryId,
+              sender: msg.sender,
+              senderRole: msg.senderRole,
+              team: msg.team,
+              message: msg.message
+            });
+          });
+        }
         
         // Transform messages to include proper flags for ChatDisplay
-        const transformedMessages = messages.map((msg: any) => ({
+        const transformedMessages = validMessages.map((msg: any) => ({
           ...msg,
           isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
           isReply: msg.team === 'Credit' || msg.senderRole === 'credit'
         }));
         
-        // Sort messages by timestamp
+        // Sort messages by timestamp (oldest first)
         transformedMessages.sort((a: { timestamp: string }, b: { timestamp: string }) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
+        // Set all messages from database - no filtering of temporary messages
         setChatMessages(transformedMessages);
+        
+        console.log(`✅ Credit Dashboard: Displaying ${transformedMessages.length} validated messages for query ${queryIdStr}`);
         
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 100);
       } else {
-        console.error('Failed to load chat messages:', result.error);
+        console.error('❌ Credit Dashboard: Failed to load chat messages:', result.error);
         showSuccessMessage('❌ Failed to load chat messages');
       }
     } catch (error) {
-      console.error('Error loading chat messages:', error);
+      console.error('💥 Credit Dashboard: Error loading chat messages:', error);
       showSuccessMessage('❌ Error loading chat messages');
     }
   };
@@ -830,34 +917,95 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
   const handleSendMessage = async () => {
     // Use selectedQueryForChat if available (for chat modal), otherwise selectedQuery (for inline chat)
     const queryForMessage = selectedQueryForChat || selectedQuery;
-    if (!newMessage.trim() || !queryForMessage) return;
+    if (!newMessage.trim() || !queryForMessage) {
+      console.error('❌ Credit Dashboard: Cannot send message - missing message or query', {
+        hasMessage: !!newMessage.trim(),
+        hasQuery: !!queryForMessage
+      });
+      showSuccessMessage('❌ Error: Please enter a message and select a query.');
+      return;
+    }
 
     try {
-      // Use the specific queryId if available, otherwise use the main id
-      const chatQueryId = queryForMessage.queryId || queryForMessage.id;
-      console.log(`📤 Credit Dashboard: Sending message to queryId: ${chatQueryId} (App: ${queryForMessage.appNo})`);
+      // CRITICAL FIX: Extract numeric queryId to ensure proper connection with Operations
+      const rawQueryId = queryForMessage.queryId || queryForMessage.id;
+      const chatQueryId = extractNumericQueryId(rawQueryId);
+      
+      console.log(`🔧 Credit Dashboard: Query ID conversion`, {
+        originalId: rawQueryId,
+        extractedNumericId: chatQueryId,
+        appNo: queryForMessage.appNo
+      });
+      
+      // Validate that this is actually a credit team query
+      const queryData = queryForMessage as any; // Type assertion for validation
+      if (!queryData.markedForTeam || queryData.markedForTeam !== 'credit') {
+        console.warn('⚠️ Credit Dashboard: Attempting to send message to non-credit query', {
+          rawQueryId,
+          numericQueryId: chatQueryId,
+          markedForTeam: queryData.markedForTeam,
+          team: queryData.team,
+          sendToCredit: queryData.sendToCredit
+        });
+      }
+      
+      console.log(`📤 Credit Dashboard: Sending message to NUMERIC queryId: ${chatQueryId} (was: ${rawQueryId}) (App: ${queryForMessage.appNo})`);
+      console.log('📋 Message details:', {
+        rawQueryId,
+        numericQueryId: chatQueryId,
+        appNo: queryForMessage.appNo,
+        markedForTeam: queryData.markedForTeam,
+        messageLength: newMessage.length,
+        sender: user?.name || 'Credit Team'
+      });
+      
+      // Extra validation: Don't send to sales queries
+      if (queryData.markedForTeam === 'sales' || queryData.team === 'sales') {
+        console.error('🚨 Credit Dashboard: BLOCKED - Attempting to send credit message to sales query!');
+        showSuccessMessage('❌ Error: Cannot send message to sales query. Please select a credit query.');
+        return;
+      }
+      
+      const messagePayload = {
+        message: newMessage,
+        sender: user?.name || 'Credit Team',
+        senderRole: 'credit',
+        team: 'Credit',
+        queryId: chatQueryId.toString() // Include numeric queryId for validation
+      };
+      
+      console.log('📤 Sending payload:', messagePayload);
       
       const response = await fetch(`/api/queries/${chatQueryId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: newMessage,
-          sender: user?.name || 'Credit Team',
-          senderRole: 'credit',
-          team: 'Credit'
-        }),
+        body: JSON.stringify(messagePayload),
       });
 
+      console.log(`📬 Response status: ${response.status} ${response.statusText}`);
+
       if (response.ok) {
+        const responseData = await response.json();
+        console.log('✅ Credit message sent successfully:', responseData);
+        
+        // Clear input immediately
         setNewMessage('');
-        loadChatMessages(Number(chatQueryId));
-        showSuccessMessage('Message sent! 📤');
+        
+        // Reload messages from server to show the stored message
+        // This ensures persistence and that operations team can see it too
+        setTimeout(() => {
+          console.log('🔄 Reloading messages after successful send...');
+          loadChatMessages(chatQueryId); // chatQueryId is already numeric
+        }, 300);
+        
+        showSuccessMessage('✅ Message sent successfully! Operations team will see this message. 📤');
       } else {
         const errorData = await response.json();
+        console.error('❌ Error response:', errorData);
         showSuccessMessage(`❌ Error: Failed to send message. ${errorData.error}`);
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('💥 Error sending message:', error);
       showSuccessMessage('❌ Error: Failed to send message. Please try again.');
     }
   };

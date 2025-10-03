@@ -172,7 +172,7 @@ export default function SalesDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <SalesNavbar 
         assignedBranches={assignedBranches}
         onRefresh={handleRefresh}
@@ -186,29 +186,38 @@ export default function SalesDashboard() {
         onClearFilter={clearAppNoFilter}
       />
       
-      <div className="flex">
+      <div className="flex min-h-[calc(100vh-4rem)]">
         <SalesSidebar 
           activeTab={activeTab} 
           onTabChange={handleTabChange}
           newQueriesCount={newQueriesCount}
         />
         
-        <div className="flex-1 lg:ml-0">
-          {/* Mobile tab navigation for smaller screens */}
-          <div className="lg:hidden bg-white border-b">
+        <div className="flex-1 min-w-0">
+          {/* Enhanced Mobile tab navigation */}
+          <div className="lg:hidden bg-white border-b shadow-sm sticky top-0 z-10">
             <div className="px-4 py-3">
-              <select
-                value={activeTab}
-                onChange={(e) => handleTabChange(e.target.value as SalesTabType)}
-                className="w-full p-2 border rounded-lg"
-              >
-                <option value="queries-raised">Queries Raised</option>
-                <option value="queries-resolved">Queries Resolved</option>
-              </select>
+              <div className="flex items-center space-x-2">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <select
+                  value={activeTab}
+                  onChange={(e) => handleTabChange(e.target.value as SalesTabType)}
+                  className="flex-1 p-3 text-base font-medium border-0 bg-transparent focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900"
+                >
+                  <option value="queries-raised" className="text-gray-900 bg-white">📋 Queries Raised</option>
+                  <option value="queries-resolved" className="text-gray-900 bg-white">✅ Queries Resolved</option>
+                </select>
+              </div>
             </div>
           </div>
           
-          {renderActiveTab()}
+          <div className="p-4 lg:p-6 space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {renderActiveTab()}
+            </div>
+          </div>
         </div>
       </div>
     </div>

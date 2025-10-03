@@ -95,8 +95,8 @@ const generateQueryKey = (query: any, index: number, prefix: string = 'query') =
 // Fetch queries function - Now fetches only truly pending queries (not approved/resolved)
 const fetchQueries = async (): Promise<Query[]> => {
   try {
-    // Fetch only pending queries, excluding approved/resolved/deferred/otc
-    const response = await fetch('/api/queries?status=pending');
+    // Fetch pending queries from the operations-specific API endpoint
+    const response = await fetch('/api/queries/operations?status=pending&type=created');
     const result = await response.json();
     
     if (!response.ok || !result.success) {
@@ -398,26 +398,38 @@ export default function QueryRaised() {
     };
   }, [autoRefresh, currentView, selectedAppNo, appQueries.length, refetch, queries]);
 
-  // Auto-refresh chat messages when in chat view
+  // Auto-refresh chat messages when in chat view with enhanced isolation
   useEffect(() => {
     let chatRefreshInterval: NodeJS.Timeout;
     
     if (autoRefresh && currentView === 'chat' && selectedQuery) {
+      // Store the query ID to prevent race conditions
+      const currentQueryId = selectedQuery.id;
+      
+      console.log(`🔄 Setting up auto-refresh for chat messages (query ${currentQueryId})`);
+      
       chatRefreshInterval = setInterval(async () => {
         try {
-          await loadChatMessages(selectedQuery.id);
+          // Double-check we're still viewing the same query
+          if (selectedQuery && selectedQuery.id === currentQueryId && currentView === 'chat') {
+            console.log(`🔄 Auto-refreshing chat messages for query ${currentQueryId}`);
+            await loadChatMessages(currentQueryId);
+          } else {
+            console.log(`🛑 Skipping chat refresh - query changed or view changed`);
+          }
         } catch (error) {
           console.error('Failed to refresh chat messages:', error);
         }
-      }, 5000); // Refresh every 5 seconds for real-time chat
+      }, 8000); // Increased interval to 8 seconds to reduce server load
     }
 
     return () => {
       if (chatRefreshInterval) {
+        console.log(`🧹 Cleaning up chat auto-refresh interval`);
         clearInterval(chatRefreshInterval);
       }
     };
-  }, [autoRefresh, currentView, selectedQuery]);
+  }, [autoRefresh, currentView, selectedQuery?.id]); // Added selectedQuery.id dependency
 
   // Extract individual queries for display with sequential numbering
   const individualQueries = React.useMemo(() => {
@@ -529,24 +541,55 @@ export default function QueryRaised() {
     setIsChatOpen(true);
   };
 
-  // Load chat messages
+  // Load chat messages with enhanced isolation validation
   const loadChatMessages = async (queryId: number) => {
     try {
       console.log(`🔄 Loading chat messages for query ${queryId}`);
       
-      const response = await fetch(`/api/queries/${queryId}/chat`);
+      // Add cache-busting parameter to prevent contamination
+      const cacheBuster = Date.now();
+      const response = await fetch(`/api/queries/${queryId}/chat?t=${cacheBuster}`, {
+        cache: 'no-store', // Prevent caching that could cause contamination
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       const result = await response.json();
       
       if (result.success) {
         const messages = result.data || [];
         console.log(`📬 Loaded ${messages.length} messages for query ${queryId}`);
         
+        // CRITICAL: Validate that ALL messages belong to the current query
+        const validMessages = messages.filter((msg: any) => {
+          const msgQueryId = msg.queryId?.toString();
+          const targetQueryId = queryId.toString();
+          
+          // Strict validation - exact match only
+          const isValid = msgQueryId === targetQueryId;
+          
+          if (!isValid) {
+            console.warn(`🚫 FILTERED OUT contaminated message: msg.queryId="${msgQueryId}", target="${targetQueryId}"`);
+          }
+          
+          return isValid;
+        });
+        
+        if (validMessages.length !== messages.length) {
+          console.warn(`⚠️ Chat Isolation: Filtered out ${messages.length - validMessages.length} contaminated messages for query ${queryId}`);
+          showSuccessMessage(`⚠️ Filtered ${messages.length - validMessages.length} contaminated messages`);
+        }
+        
         // Transform messages to include proper flags for ChatDisplay
-        const transformedMessages = messages.map((msg: any) => ({
+        const transformedMessages = validMessages.map((msg: any) => ({
           ...msg,
           isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
           isReply: msg.team === 'Sales' || msg.team === 'Credit' ||
-                  msg.senderRole === 'sales' || msg.senderRole === 'credit'
+                  msg.senderRole === 'sales' || msg.senderRole === 'credit',
+          // Add validation flag
+          validated: true,
+          targetQueryId: queryId.toString()
         }));
         
         // Sort messages by timestamp
@@ -554,6 +597,7 @@ export default function QueryRaised() {
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
+        console.log(`✅ Chat Isolation: Set ${transformedMessages.length} validated messages for query ${queryId}`);
         setChatMessages(transformedMessages);
         
         setTimeout(() => {
@@ -569,28 +613,45 @@ export default function QueryRaised() {
     }
   };
 
-  // Send message
+  // Send message with enhanced validation
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedQuery) return;
 
+    const queryId = selectedQuery.id;
+    
     try {
-      const response = await fetch(`/api/queries/${selectedQuery.id}/chat`, {
+      console.log(`📤 Sending message to query ${queryId}: "${newMessage}"`);
+      
+      const response = await fetch(`/api/queries/${queryId}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
         body: JSON.stringify({
           message: newMessage,
           sender: user?.name || 'Operations Team',
           senderRole: 'operations',
-          team: 'Operations'
+          team: 'Operations',
+          queryId: queryId.toString() // Explicitly include queryId for validation
         }),
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log(`✅ Message sent successfully to query ${queryId}`);
+        
         setNewMessage('');
-        loadChatMessages(selectedQuery.id);
+        
+        // Reload messages with a small delay to ensure server has processed
+        setTimeout(async () => {
+          await loadChatMessages(queryId);
+        }, 500);
+        
         showSuccessMessage('Message sent! 📤');
       } else {
         const errorData = await response.json();
+        console.error(`❌ Failed to send message to query ${queryId}:`, errorData);
         showSuccessMessage(`❌ Error: Failed to send message. ${errorData.error}`);
       }
     } catch (error) {

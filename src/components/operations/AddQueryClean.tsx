@@ -97,7 +97,7 @@ const submitQuery = async (data: {
     const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
-      const response = await fetch('/api/queries', {
+      const response = await fetch('/api/queries/operations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

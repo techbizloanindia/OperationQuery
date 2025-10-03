@@ -41,14 +41,22 @@ export default function CreditSidebar({
 
   return (
     <div className="hidden lg:flex lg:flex-shrink-0">
-      <div className="flex flex-col w-72">
-        <div className="flex-1 min-h-0 border-r border-gray-200 bg-white">
-          <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
-            <div className="flex items-center flex-shrink-0 px-4 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900">Credit Team</h2>
+      <div className="flex flex-col w-80">
+        <div className="flex-1 min-h-0 border-r border-gray-200 bg-gradient-to-b from-white to-gray-50 shadow-xl">
+          <div className="flex-1 flex flex-col pt-6 pb-4 overflow-y-auto">
+            <div className="flex items-center flex-shrink-0 px-6 mb-8">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-sm">
+                  <span className="text-white font-bold text-lg">💳</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Credit Team</h2>
+                  <p className="text-sm text-gray-600">Dashboard Navigation</p>
+                </div>
+              </div>
             </div>
             
-            <nav className="mt-5 flex-1 px-2 space-y-2">
+            <nav className="mt-2 flex-1 px-4 space-y-3">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -57,27 +65,27 @@ export default function CreditSidebar({
                   <button
                     key={tab.id}
                     onClick={() => onTabChange(tab.id)}
-                    className={`group flex items-center w-full px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
+                    className={`group flex items-center w-full px-4 py-4 text-sm font-medium rounded-xl transition-all duration-300 transform hover:scale-[1.02] ${
                       isActive
-                        ? `${tab.bgColor} ${tab.color} shadow-sm`
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        ? `${tab.bgColor} ${tab.color} shadow-lg border-2 border-green-200`
+                        : 'text-gray-700 hover:bg-white hover:text-gray-900 hover:shadow-md bg-gray-50/50'
                     }`}
                   >
                     <Icon
-                      className={`flex-shrink-0 mr-3 h-5 w-5 transition-colors ${
-                        isActive ? tab.color : 'text-gray-400 group-hover:text-gray-500'
+                      className={`flex-shrink-0 mr-4 h-6 w-6 transition-all duration-200 ${
+                        isActive ? tab.color : 'text-gray-500 group-hover:text-gray-700'
                       }`}
                     />
-                    <div className="flex-1 text-left">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{tab.label}</span>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold truncate">{tab.label}</span>
                         {tab.badge && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-red-500 text-white shadow-sm animate-pulse">
                             {tab.badge}
                           </span>
                         )}
                       </div>
-                      <p className={`text-xs mt-0.5 ${
+                      <p className={`text-xs font-medium ${
                         isActive ? 'text-current opacity-80' : 'text-gray-500'
                       }`}>
                         {tab.description}

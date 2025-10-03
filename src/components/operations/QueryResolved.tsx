@@ -77,9 +77,9 @@ interface HistoryMessage {
 // Fetch only resolved queries (approved, deferred, otc) with real-time data
 const fetchAllQueries = async (): Promise<Query[]> => {
   try {
-    // Add a cache-busting parameter to ensure we get fresh data
+    // Fetch resolved queries from the operations-specific API endpoint
     const timestamp = new Date().getTime();
-    const response = await fetch(`/api/queries?_=${timestamp}`);
+    const response = await fetch(`/api/queries/operations?status=resolved&type=created&_=${timestamp}`);
     const result = await response.json();
     
     if (!response.ok || !result.success) {
