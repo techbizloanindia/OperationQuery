@@ -935,7 +935,35 @@ export default function QueryResolved() {
                   )}
                 </div>
                 
+                {/* Debug Information */}
+                <div className="mb-4 p-3 bg-slate-100 rounded-lg text-xs">
+                  <p><strong>Debug Info:</strong></p>
+                  <p>Query ID: {selectedQuery.appNo}</p>
+                  <p>History Loading: {historyLoading ? 'Yes' : 'No'}</p>
+                  <p>Messages Found: {queryHistory?.length || 0}</p>
+                  <p>Static Messages: {selectedQuery.queries?.[0]?.text ? 'Available' : 'None'}</p>
+                </div>
+                
                 <div className="space-y-4 max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+                  {/* Show static query text if available */}
+                  {selectedQuery.queries?.[0]?.text && (
+                    <div className="relative p-6 rounded-2xl border shadow-sm bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+                      <div className="flex items-start gap-4">
+                        <div className="p-3 rounded-xl shadow-sm bg-amber-500">
+                          <FaFileAlt className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-slate-800 text-lg mb-2">📋 Original Query</h4>
+                          <div className="bg-white rounded-xl p-4 border border-slate-200/60 shadow-sm">
+                            <p className="text-slate-700 text-base leading-relaxed whitespace-pre-wrap break-words">
+                              {selectedQuery.queries[0].text}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {queryHistory && queryHistory.length > 0 ? (
                     queryHistory.map((message, index) => (
                       <div key={message.id} className="relative">
@@ -1012,8 +1040,30 @@ export default function QueryResolved() {
                       <div className="bg-slate-100 p-4 rounded-2xl w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                         <FaComments className="h-8 w-8 text-slate-400" />
                       </div>
-                      <h4 className="text-lg font-bold text-slate-800 mb-2">No Communication History</h4>
-                      <p className="text-slate-600">Messages and communications between teams will appear here</p>
+                      <h4 className="text-lg font-bold text-slate-800 mb-2">No Communication History Found</h4>
+                      <p className="text-slate-600 mb-4">
+                        {historyLoading 
+                          ? 'Loading chat messages...' 
+                          : `No chat messages found for query ${selectedQuery.appNo}`
+                        }
+                      </p>
+                      
+                      {/* Show resolution information as an alternative */}
+                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm max-w-md mx-auto">
+                        <h5 className="font-semibold text-slate-700 mb-2">Query Resolution Details:</h5>
+                        <div className="text-sm space-y-1">
+                          <p><span className="font-medium">Status:</span> {selectedQuery.status}</p>
+                          <p><span className="font-medium">Resolved:</span> {new Date(selectedQuery.lastUpdated).toLocaleString()}</p>
+                          <p><span className="font-medium">Team:</span> {selectedQuery.sendTo?.join(', ') || 'Operations'}</p>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => window.open(`/api/debug-chat-history?queryId=${selectedQuery.appNo}`, '_blank')}
+                        className="mt-4 text-blue-600 hover:text-blue-800 text-sm underline"
+                      >
+                        🔍 Debug Chat History (New Tab)
+                      </button>
                     </div>
                   )}
                 </div>
