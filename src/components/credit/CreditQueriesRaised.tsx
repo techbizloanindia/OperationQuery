@@ -857,9 +857,9 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: newMessage,
-          sender: user?.name || 'credit Team',
+          sender: user?.name || 'Credit Team',
           senderRole: 'credit',
-          team: 'credit',
+          team: 'Credit',
           queryId: chatQueryId // Include queryId in body for validation
         }),
       });

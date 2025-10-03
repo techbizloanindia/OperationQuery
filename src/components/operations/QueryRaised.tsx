@@ -585,7 +585,8 @@ export default function QueryRaised() {
         const transformedMessages = validMessages.map((msg: any) => ({
           ...msg,
           isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
-          isReply: msg.team === 'Sales' || msg.team === 'Credit' ||
+          isReply: msg.team === 'Sales' || msg.team === 'Credit' || 
+                  msg.team === 'sales' || msg.team === 'credit' ||
                   msg.senderRole === 'sales' || msg.senderRole === 'credit',
           // Add validation flag
           validated: true,

@@ -151,7 +151,7 @@ export default function EnhancedQueryChatInterface({
     }
     
     // Sales Reply
-    if (message.team === 'Sales' || message.senderRole === 'sales') {
+    if (message.team === 'Sales' || message.team === 'sales' || message.senderRole === 'sales') {
       return {
         container: 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-500 shadow-md',
         header: 'text-blue-900 font-semibold',
@@ -163,7 +163,7 @@ export default function EnhancedQueryChatInterface({
     }
     
     // Credit Reply
-    if (message.team === 'Credit' || message.senderRole === 'credit') {
+    if (message.team === 'Credit' || message.team === 'credit' || message.senderRole === 'credit') {
       return {
         container: 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 shadow-md',
         header: 'text-green-900 font-semibold',

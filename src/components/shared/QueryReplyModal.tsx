@@ -328,8 +328,8 @@ export default function QueryReplyModal({
               }
               
               // Determine message type based on team/sender role
-              const messageType = message.team === 'Credit' ? 'Credit Response' :
-                                 message.team === 'Sales' ? 'Sales Response' : 
+              const messageType = (message.team === 'Credit' || message.team === 'credit') ? 'Credit Response' :
+                                 (message.team === 'Sales' || message.team === 'sales') ? 'Sales Response' : 
                                  message.isSystemMessage ? 'System Message' : 'Operations';
               
               // Handle system messages differently
