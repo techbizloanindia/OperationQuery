@@ -188,54 +188,54 @@ export default function SanctionedCases({ onRaiseQuery }: SanctionedCasesProps) 
 
   return (
     <>
-      {/* Header with stats */}
-      <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+      {/* Simple Header */}
+      <div className="mb-4 bg-white p-4 border border-gray-200">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold text-green-800">✅ Sanctioned Applications</h3>
-            <p className="text-sm text-green-600">
+            <h3 className="text-lg font-semibold text-gray-800">Sanctioned Applications</h3>
+            <p className="text-sm text-gray-600">
               {sanctionedCases.length > 0 
                 ? `${sanctionedCases.length} applications ready for processing` 
                 : 'No sanctioned applications found'}
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Last updated: {formatLastUpdated()}
-              {autoRefresh && <span className="ml-2 text-green-600">• Auto-refreshing</span>}
+              {autoRefresh && <span className="ml-2 text-gray-600">• Auto-refreshing</span>}
             </p>
           </div>
           <div className="flex items-center space-x-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-800">{sanctionedCases.length}</div>
-              <div className="text-xs text-green-600">Total Cases</div>
+              <div className="text-xl font-semibold text-gray-800">{sanctionedCases.length}</div>
+              <div className="text-xs text-gray-600">Total Cases</div>
             </div>
             <div className="flex flex-col space-y-2">
               <button
                 onClick={() => fetchSanctionedCases(false)}
-                className="text-xs font-medium px-3 py-1 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
+                className="text-xs px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
               >
-                🔄 Refresh Now
+                Refresh Now
               </button>
               <button
                 onClick={toggleAutoRefresh}
-                className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
+                className={`text-xs px-3 py-1 border ${
                   autoRefresh 
-                    ? 'text-orange-600 bg-orange-100 hover:bg-orange-200' 
-                    : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                    ? 'text-gray-700 bg-gray-200 border-gray-300' 
+                    : 'text-gray-600 bg-gray-100 border-gray-300'
                 }`}
               >
-                {autoRefresh ? '⏸️ Pause Auto-refresh' : '▶️ Enable Auto-refresh'}
+                {autoRefresh ? 'Pause Auto-refresh' : 'Enable Auto-refresh'}
               </button>
             </div>
           </div>
         </div>
         
-        {/* New Upload Notification */}
+        {/* Simple Notification */}
         {sanctionedCases.length > 0 && (
-          <div className="mt-3 bg-white border border-green-300 rounded-lg p-3">
+          <div className="mt-3 bg-gray-50 border border-gray-200 p-3">
             <div className="flex items-center justify-center text-sm">
               <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-green-700 font-medium">
+                <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                <span className="text-gray-700">
                   Real-time updates enabled - New uploads will appear automatically
                 </span>
               </div>
@@ -244,81 +244,54 @@ export default function SanctionedCases({ onRaiseQuery }: SanctionedCasesProps) 
         )}
       </div>
 
-      {/* Enhanced Card Grid View for All Devices */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {sanctionedCases.map((application, index) => (
-          <div 
-            key={application._id} 
-            className="bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl hover:border-blue-200 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
-          >
-            {/* Card Header with App ID and Status */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-lg font-bold">{application.appId}</h3>
-                  <p className="text-blue-100 text-sm opacity-90">Application No.</p>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                  application.status === 'active' ? 'bg-green-500 text-white' :
-                  application.status === 'expired' ? 'bg-red-500 text-white' :
-                  application.status === 'utilized' ? 'bg-blue-500 text-white' :
-                  'bg-gray-500 text-white'
-                }`}>
-                  {application.status}
-                </div>
-              </div>
-            </div>
-
-            {/* Card Body */}
-            <div className="p-6 space-y-4">
-              {/* Customer Name */}
-              <div className="text-center">
-                <h4 className="text-xl font-bold text-gray-800">{application.customerName}</h4>
-                <p className="text-gray-500 text-sm">Customer Name</p>
-              </div>
-
-              {/* Amount Highlight */}
-              <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
-                <div className="text-2xl font-bold text-green-700">
+      {/* Simple Table Layout */}
+      <div className="bg-white border border-gray-200">
+        <table className="min-w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">App ID</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer Name</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Branch</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">RM Executive</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sanctionedCases.map((application, index) => (
+              <tr key={application._id} className="border-b border-gray-200 hover:bg-gray-50">
+                <td className="px-4 py-4 text-sm font-medium text-gray-900">{application.appId}</td>
+                <td className="px-4 py-4 text-sm text-gray-900">{application.customerName}</td>
+                <td className="px-4 py-4 text-sm font-medium text-gray-900">
                   ₹{application.sanctionedAmount.toLocaleString('en-IN')}
-                </div>
-                <p className="text-green-600 text-sm font-medium">Sanctioned Amount</p>
-              </div>
-
-              {/* Details Grid */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-600 text-sm font-medium">🏢 Branch</span>
-                  <span className="text-gray-900 font-semibold text-sm">{application.branch}</span>
-                </div>
-                
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-600 text-sm font-medium">👤 RM Executive</span>
-                  <span className="text-gray-900 font-semibold text-sm">
-                    {application.salesExec || application.approvedBy || 'Not Assigned'}
+                </td>
+                <td className="px-4 py-4 text-sm text-gray-900">{application.branch}</td>
+                <td className="px-4 py-4">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold border ${
+                    application.status === 'active' ? 'bg-green-100 text-green-800 border-green-200' :
+                    application.status === 'expired' ? 'bg-red-100 text-red-800 border-red-200' :
+                    application.status === 'utilized' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                    'bg-gray-100 text-gray-800 border-gray-200'
+                  }`}>
+                    {application.status}
                   </span>
-                </div>
-
-                {application.loanType && (
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-600 text-sm font-medium">💼 Loan Type</span>
-                    <span className="text-gray-900 font-semibold text-sm">{application.loanType}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Button */}
-              <div className="pt-4">
-                <button
-                  onClick={() => onRaiseQuery(application.appId)}
-                  className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-                >
-                  🔍 Raise Query
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+                </td>
+                <td className="px-4 py-4 text-sm text-gray-900">
+                  {application.salesExec || application.approvedBy || 'Not Assigned'}
+                </td>
+                <td className="px-4 py-4">
+                  <button
+                    onClick={() => onRaiseQuery(application.appId)}
+                    className="text-sm px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 border border-blue-600"
+                  >
+                    Raise Query
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   );
