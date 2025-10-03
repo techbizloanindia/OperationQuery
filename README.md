@@ -10,6 +10,29 @@
 
 **OpsQuery** is an advanced real-time query management system designed for financial institutions to streamline communication and workflow between Operations, Sales, and Credit teams. The system provides role-based dashboards, real-time messaging, query tracking, comprehensive audit trails, and advanced analytics.
 
+## 🆕 Latest Updates (October 2025)
+
+### ✅ **Major Chat System Enhancement**
+
+- **Fixed Credit-Operations Communication**: Resolved UUID vs numeric query ID mismatch
+- **Enhanced Chat Isolation**: Ultra-strict validation prevents cross-query contamination
+- **Real-time Bidirectional Messaging**: Credit ↔ Operations seamless communication
+- **Message Migration Tools**: Automated fixing of existing message format issues
+
+### ✅ **Comprehensive API Testing Suite**
+
+- **170+ API Endpoints**: Fully tested and documented
+- **Performance Monitoring**: Real-time response time tracking
+- **Debug Tools**: Advanced chat isolation and contamination detection
+- **Health Monitoring**: Database connectivity and system status checks
+
+### ✅ **Enhanced UI/UX**
+
+- **Responsive Design**: Optimized for all screen sizes
+- **Real-time Updates**: Auto-refresh with 5-second intervals
+- **Team-specific Styling**: Visual distinction for different team messages
+- **Mobile-friendly Interface**: Touch-optimized controls
+
 ## 📋 Table of Contents
 
 - [Project Overview](#project-overview)
