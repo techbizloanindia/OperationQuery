@@ -247,59 +247,6 @@ export default function OperationsDashboard() {
         {/* Main Content Area */}
         <div className="flex-1 lg:ml-0 min-h-screen">
           <div className="max-w-full px-4 lg:px-8 py-6 space-y-6">
-            {/* Page Header - Desktop Only */}
-            <div className="hidden lg:block">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 mb-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-slate-800 mb-2">
-                      {activeTab === 'dashboard' && '📊 Operations Dashboard'}
-                      {activeTab === 'query-raised' && '📋 Queries Raised'}
-                      {activeTab === 'query-resolved' && '✅ Queries Resolved'}
-                      {activeTab === 'sanctioned-cases' && '🏛️ Sanctioned Cases'}
-                      {activeTab === 'add-query' && '➕ Add New Query'}
-                    </h1>
-                    <p className="text-slate-600 text-sm lg:text-base font-medium">
-                      {activeTab === 'dashboard' && 'Monitor and manage all query operations in real-time'}
-                      {activeTab === 'query-raised' && 'View and manage all pending queries from sales and credit teams'}
-                      {activeTab === 'query-resolved' && 'Review all resolved and completed queries'}
-                      {activeTab === 'sanctioned-cases' && 'Manage sanctioned applications and generate queries'}
-                      {activeTab === 'add-query' && 'Create new queries for customer applications'}
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-center space-x-3">
-                    <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
-                      isRefreshing ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                    }`}>
-                      <div className={`w-2 h-2 rounded-full ${
-                        isRefreshing ? 'bg-blue-500 animate-pulse' : 'bg-green-500'
-                      }`} />
-                      <span className="text-xs font-semibold">
-                        {isRefreshing ? 'Refreshing...' : 'Live'}
-                      </span>
-                    </div>
-                    
-                    <button
-                      onClick={handleRefresh}
-                      disabled={isRefreshing}
-                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
-                    >
-                      <svg 
-                        className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <span>Refresh</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
             {/* Content Area with Enhanced Responsive Design */}
             <div className="w-full">
               {renderActiveTab()}
