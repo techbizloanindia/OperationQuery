@@ -321,8 +321,9 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
           console.log(`💬 New message received for query ${update.appNo}`);
           showSuccessMessage(`New message for ${update.appNo}! 💬`);
           
-          if (selectedQuery && selectedQuery.appNo === update.appNo && currentView === 'chat') {
-            const chatQueryId = selectedQuery.queryId || selectedQuery.id.toString();
+          if (selectedQueryForChat && selectedQueryForChat.appNo === update.appNo && currentView === 'chat') {
+            const chatQueryId = selectedQueryForChat.queryId || selectedQueryForChat.id.toString();
+            console.log(`🔄 Real-time chat update: Reloading messages for query ${chatQueryId}`);
             loadChatMessages(chatQueryId);
           }
           
@@ -345,7 +346,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
       window.removeEventListener('queryUpdated', handleQueryUpdated);
       window.removeEventListener('queryResolved', handleQueryUpdated);
     };
-  }, [refetch, selectedQuery, currentView]);
+  }, [refetch, selectedQueryForChat, currentView]);
 
   // Extract individual queries for display with sequential numbering - exclude resolved queries
   const individualQueries = React.useMemo(() => {
@@ -459,6 +460,12 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
       customerName: query.customerName
     });
     setSelectedQueryForChat(query);
+    setSelectedQuery(query); // IMPORTANT: Also set selectedQuery for handleSendMessage
+    
+    // Load messages for the specific query with proper isolation
+    const chatQueryId = query.queryId || query.id.toString();
+    loadChatMessages(chatQueryId);
+    
     setIsChatOpen(true);
   };
 
@@ -807,7 +814,12 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
     try {
       // Ensure queryId is converted to string for API call
       const queryIdStr = queryId.toString();
-      console.log(`🔄 Loading chat messages for query ${queryIdStr}`);
+      console.log(`🔄 CREDIT CHAT ISOLATION: Loading messages for query ${queryIdStr}`);
+      console.log(`🔄 Current selectedQueryForChat:`, selectedQueryForChat ? {
+        id: selectedQueryForChat.id,
+        queryId: selectedQueryForChat.queryId,
+        appNo: selectedQueryForChat.appNo
+      } : 'null');
       
       const response = await fetch(`/api/queries/${queryIdStr}/chat`);
       const result = await response.json();
@@ -816,11 +828,34 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         const messages = result.data || [];
         console.log(`📬 Loaded ${messages.length} messages for query ${queryIdStr}`);
         
+        // CRITICAL: Validate that ALL messages belong to the current query
+        const validMessages = messages.filter((msg: any) => {
+          const msgQueryId = msg.queryId?.toString();
+          const targetQueryId = queryIdStr.toString();
+          
+          // Strict validation - exact match only
+          const isValid = msgQueryId === targetQueryId;
+          
+          if (!isValid) {
+            console.warn(`🚫 FILTERED OUT contaminated message: msg.queryId="${msgQueryId}", target="${targetQueryId}"`);
+          }
+          
+          return isValid;
+        });
+        
+        if (validMessages.length !== messages.length) {
+          console.warn(`⚠️ Credit Chat Isolation: Filtered out ${messages.length - validMessages.length} contaminated messages for query ${queryIdStr}`);
+          showSuccessMessage(`⚠️ Filtered ${messages.length - validMessages.length} contaminated messages`);
+        }
+        
         // Transform messages to include proper flags for ChatDisplay
-        const transformedMessages = messages.map((msg: any) => ({
+        const transformedMessages = validMessages.map((msg: any) => ({
           ...msg,
           isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
-          isReply: msg.team === 'credit' || msg.senderRole === 'credit'
+          isReply: msg.team === 'Credit' || msg.team === 'credit' || msg.senderRole === 'credit',
+          // Add validation flag
+          validated: true,
+          targetQueryId: queryIdStr.toString()
         }));
         
         // Sort messages by timestamp
@@ -845,12 +880,12 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
 
   // Send message
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedQuery) return;
+    if (!newMessage.trim() || !selectedQueryForChat) return;
 
     try {
       // Use queryId for proper chat isolation
-      const chatQueryId = selectedQuery.queryId || selectedQuery.id.toString();
-      console.log(`📤 Sending message to query ${chatQueryId}`);
+      const chatQueryId = selectedQueryForChat.queryId || selectedQueryForChat.id.toString();
+      console.log(`📤 Sending message to query ${chatQueryId} (Credit Chat Isolation)`);
       
       const response = await fetch(`/api/queries/${chatQueryId}/chat`, {
         method: 'POST',
