@@ -150,31 +150,161 @@ export default function OperationsDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <OperationsNavbar />
       
-      <div className="flex">
-        <OperationsSidebar activeTab={activeTab} onTabChangeAction={handleTabChange} />
-        
-        <div className="flex-1 lg:ml-0">
-          {/* Mobile tab navigation for smaller screens */}
-          <div className="lg:hidden bg-white border-b">
-            <div className="px-4 py-3">
+      <div className="flex flex-col lg:flex-row">
+        {/* Mobile Header & Navigation */}
+        <div className="lg:hidden bg-white shadow-sm border-b sticky top-0 z-40">
+          <div className="px-4 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h1 className="text-xl font-bold text-slate-800">Operations Dashboard</h1>
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Mobile Tab Navigation */}
+            <div className="relative">
               <select
                 value={activeTab}
                 onChange={(e) => handleTabChange(e.target.value as TabType)}
-                className="w-full p-2 border rounded-lg"
+                className="w-full p-3 text-base font-semibold text-slate-800 bg-white border-2 border-slate-200 rounded-xl appearance-none cursor-pointer hover:border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
               >
-                <option value="dashboard">Dashboard Overview</option>
-                <option value="query-raised">Queries Raised</option>
-                <option value="sanctioned-cases">Sanctioned Cases</option>
-                <option value="add-query">Add Query</option>
-                <option value="query-resolved">Queries Resolved</option>
+                <option value="dashboard">📊 Dashboard Overview</option>
+                <option value="query-raised">📋 Queries Raised</option>
+                <option value="query-resolved">✅ Queries Resolved</option>
+                <option value="sanctioned-cases">🏛️ Sanctioned Cases</option>
+                <option value="add-query">➕ Add Query</option>
               </select>
+              <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           </div>
-          
-          {renderActiveTab()}
+        </div>
+
+        {/* Sidebar for Desktop */}
+        <div className="hidden lg:block">
+          <OperationsSidebar activeTab={activeTab} onTabChangeAction={handleTabChange} />
+        </div>
+
+        {/* Mobile Sidebar Overlay */}
+        {sidebarOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 flex">
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50" 
+              onClick={() => setSidebarOpen(false)}
+            />
+            <div className="relative w-80 max-w-xs bg-white shadow-xl">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h2 className="text-lg font-semibold text-slate-800">Navigation</h2>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200"
+                >
+                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 space-y-2">
+                {[
+                  { key: 'dashboard', label: '📊 Dashboard Overview', icon: '📊' },
+                  { key: 'query-raised', label: '📋 Queries Raised', icon: '📋' },
+                  { key: 'query-resolved', label: '✅ Queries Resolved', icon: '✅' },
+                  { key: 'sanctioned-cases', label: '🏛️ Sanctioned Cases', icon: '🏛️' },
+                  { key: 'add-query', label: '➕ Add Query', icon: '➕' }
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => {
+                      handleTabChange(tab.key as TabType);
+                      setSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center space-x-3 px-4 py-3 text-left rounded-xl transition-all ${
+                      activeTab === tab.key
+                        ? 'bg-blue-100 text-blue-700 font-semibold'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                    }`}
+                  >
+                    <span className="text-xl">{tab.icon}</span>
+                    <span className="font-medium">{tab.label.replace(/^[^\s]+ /, '')}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Main Content Area */}
+        <div className="flex-1 lg:ml-0 min-h-screen">
+          <div className="max-w-full px-4 lg:px-8 py-6 space-y-6">
+            {/* Page Header - Desktop Only */}
+            <div className="hidden lg:block">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h1 className="text-2xl lg:text-3xl font-bold text-slate-800 mb-2">
+                      {activeTab === 'dashboard' && '📊 Operations Dashboard'}
+                      {activeTab === 'query-raised' && '📋 Queries Raised'}
+                      {activeTab === 'query-resolved' && '✅ Queries Resolved'}
+                      {activeTab === 'sanctioned-cases' && '🏛️ Sanctioned Cases'}
+                      {activeTab === 'add-query' && '➕ Add New Query'}
+                    </h1>
+                    <p className="text-slate-600 text-sm lg:text-base font-medium">
+                      {activeTab === 'dashboard' && 'Monitor and manage all query operations in real-time'}
+                      {activeTab === 'query-raised' && 'View and manage all pending queries from sales and credit teams'}
+                      {activeTab === 'query-resolved' && 'Review all resolved and completed queries'}
+                      {activeTab === 'sanctioned-cases' && 'Manage sanctioned applications and generate queries'}
+                      {activeTab === 'add-query' && 'Create new queries for customer applications'}
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
+                      isRefreshing ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      <div className={`w-2 h-2 rounded-full ${
+                        isRefreshing ? 'bg-blue-500 animate-pulse' : 'bg-green-500'
+                      }`} />
+                      <span className="text-xs font-semibold">
+                        {isRefreshing ? 'Refreshing...' : 'Live'}
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={handleRefresh}
+                      disabled={isRefreshing}
+                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                    >
+                      <svg 
+                        className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Content Area with Enhanced Responsive Design */}
+            <div className="w-full">
+              {renderActiveTab()}
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -126,17 +126,23 @@ export default function OperationsNavbar() {
   };
 
   return (
-    <nav className="bg-slate-700 text-white px-4 lg:px-6 py-3">
+    <nav className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 text-white px-4 lg:px-8 py-4 shadow-xl border-b-2 border-slate-600">
       <div className="flex items-center justify-between">
-        {/* Left section - Logo and title */}
-        <div className="flex items-center space-x-4 lg:space-x-6">
+        {/* Left section - Enhanced Logo and title */}
+        <div className="flex items-center space-x-4 lg:space-x-8">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 lg:w-10 lg:h-10 bg-green-500 rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-xs lg:text-sm">BIZ</span>
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
+              <span className="text-white font-bold text-sm lg:text-base drop-shadow-sm">BIZ</span>
             </div>
-            <span className="text-green-400 font-semibold text-sm lg:text-base">BIZLOAN</span>
+            <div className="flex flex-col">
+              <span className="text-green-400 font-bold text-base lg:text-lg tracking-wide">BIZLOAN</span>
+              <span className="text-slate-300 text-xs lg:text-sm font-medium">Query Management</span>
+            </div>
           </div>
-          <span className="text-lg lg:text-xl font-semibold hidden sm:block">Dashboard System</span>
+          <div className="hidden md:block h-8 w-px bg-slate-600"></div>
+          <span className="text-lg lg:text-xl font-bold hidden md:block bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Operations Center
+          </span>
         </div>
 
         {/* Center section - Navigation tabs (hidden on mobile) */}
@@ -145,17 +151,20 @@ export default function OperationsNavbar() {
             📊 Operations
           </button>
           
-          {/* Branches dropdown */}
+          {/* Enhanced Branches dropdown */}
           <div className="relative branches-dropdown">
             <button
               onClick={() => setShowBranchDropdown(!showBranchDropdown)}
-              className="flex items-center space-x-2 px-4 py-2 hover:bg-slate-600 rounded-md transition-colors"
+              className="flex items-center space-x-3 px-6 py-3 hover:bg-slate-600/70 rounded-xl transition-all duration-200 backdrop-blur-sm border border-slate-600/50 hover:border-slate-500"
             >
-              <span>
-                🏢 Branches ({isLoadingBranches ? '...' : branches.length})
-                {isLoadingBranches && <span className="animate-pulse ml-1">⏳</span>}
+              <span className="flex items-center space-x-2">
+                <span className="text-lg">🏢</span>
+                <span className="font-semibold">
+                  Branches ({isLoadingBranches ? '...' : branches.length})
+                </span>
+                {isLoadingBranches && <span className="animate-pulse ml-1 text-yellow-400">⏳</span>}
               </span>
-              <FaChevronDown className={`w-3 h-3 transition-transform ${showBranchDropdown ? 'rotate-180' : ''}`} />
+              <FaChevronDown className={`w-4 h-4 transition-transform duration-200 ${showBranchDropdown ? 'rotate-180' : ''}`} />
             </button>
             
             {showBranchDropdown && (
@@ -193,25 +202,48 @@ export default function OperationsNavbar() {
           </div>
         </div>
 
-        {/* Right section - User info, notifications and logout */}
-        <div className="flex items-center space-x-2 lg:space-x-4">
-          <div className="text-right hidden sm:block">
-            <div className="text-xs lg:text-sm text-gray-300">OPERATIONS</div>
-            <div className="text-xs lg:text-sm">ID: {user?.employeeId || 'CONS0130'}</div>
-            {branches.length > 0 && (
-              <div className="text-xs text-green-400">{branches.length} Active Branches</div>
-            )}
+        {/* Right section - Enhanced User info, notifications and logout */}
+        <div className="flex items-center space-x-3 lg:space-x-6">
+          {/* User Info Card */}
+          <div className="hidden sm:flex items-center space-x-4">
+            <div className="text-right">
+              <div className="text-xs lg:text-sm text-emerald-400 font-semibold tracking-wide">OPERATIONS TEAM</div>
+              <div className="text-sm lg:text-base font-bold text-white">ID: {user?.employeeId || 'CONS0130'}</div>
+              {branches.length > 0 && (
+                <div className="text-xs text-blue-300 font-medium">
+                  🏢 {branches.length} Active Branches
+                </div>
+              )}
+            </div>
+            <div className="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-xs lg:text-sm">
+                {user?.employeeId?.charAt(0) || 'O'}
+              </span>
+            </div>
           </div>
           
-          {/* Notifications */}
-          <NotificationCenter team="operations" />
+          {/* Mobile User Info */}
+          <div className="sm:hidden w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-xs">
+              {user?.employeeId?.charAt(0) || 'O'}
+            </span>
+          </div>
           
+          {/* Vertical Separator */}
+          <div className="h-8 w-px bg-slate-600"></div>
+          
+          {/* Notifications */}
+          <div className="flex items-center">
+            <NotificationCenter team="operations" />
+          </div>
+          
+          {/* Enhanced Logout Button */}
           <button
             onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 px-3 lg:px-4 py-2 rounded-md font-medium transition-colors flex items-center space-x-1 lg:space-x-2"
+            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-4 lg:px-6 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
           >
-            <FaSignOutAlt className="text-sm" />
-            <span className="hidden sm:inline">LOGOUT</span>
+            <FaSignOutAlt className="text-sm lg:text-base" />
+            <span className="hidden sm:inline text-sm lg:text-base">LOGOUT</span>
           </button>
         </div>
       </div>
