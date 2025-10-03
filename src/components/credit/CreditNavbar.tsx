@@ -28,6 +28,7 @@ export default function CreditNavbar({
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchAppNo);
+
   const formatLastRefreshed = (date: Date) => {
     return date.toLocaleTimeString('en-US', { 
       hour: '2-digit', 
@@ -55,8 +56,6 @@ export default function CreditNavbar({
       onClearFilter();
     }
   };
-
-
 
   return (
     <nav className="navbar credit-navbar bg-white shadow-lg border-b border-gray-200 sticky top-0 z-50">

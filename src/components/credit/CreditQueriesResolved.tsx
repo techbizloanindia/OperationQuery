@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
-import { queryUpdateService } from '@/lib/queryUpdateService';
 import { useAuth } from '@/contexts/AuthContext';
-import { createBranchParam } from '@/lib/utils/branchUtils';
+import { querySyncService } from '@/lib/querySyncService';
+import { queryUpdateService } from '@/lib/queryUpdateService';
 import {
   CheckCircle,
   Search,
@@ -17,33 +17,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-interface ResolvedQuery {
-  id: string;
-  appNo: string;
-  title: string;
-  customerName: string;
-  branch: string;
-  priority: 'high' | 'medium' | 'low';
-  resolvedAt: string;
-  resolvedBy: string;
-  resolutionReason?: string;
-  createdAt: string;
-  isIndividualQuery?: boolean;
-  queryText?: string;
-  queryId?: string;
-  messages: Array<{
-    sender: string;
-    text: string;
-    timestamp: string;
-    isSent: boolean;
-  }>;
-}
-
-interface CreditQueriesResolvedProps {
-  searchAppNo?: string;
-}
-
-// Local getUserBranches function
+// Local getUserBranches to handle the User type difference
 const getUserBranches = (user: any): string[] => {
   if (!user) return [];
   
@@ -59,7 +33,39 @@ const getUserBranches = (user: any): string[] => {
   return branches.filter(Boolean);
 };
 
+interface ResolvedQuery {
+  id: string;
+  appNo: string;
+  title: string;
+  customerName: string;
+  branch: string;
+  branchCode?: string;
+  priority: 'high' | 'medium' | 'low';
+  resolvedAt: string;
+  resolvedBy: string;
+  resolutionReason?: string;
+  createdAt: string;
+  sanctionedAmount?: number;
+  loanType?: string;
+  creditExec?: string;
+  isSanctioned?: boolean;
+  isIndividualQuery?: boolean;
+  queryText?: string;
+  queryId?: string;
+  messages: Array<{
+    sender: string;
+    text: string;
+    timestamp: string;
+    isSent: boolean;
+  }>;
+}
+
+interface CreditQueriesResolvedProps {
+  searchAppNo?: string;
+}
+
 export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesResolvedProps = {}) {
+  const { user } = useAuth();
   const [resolvedQueries, setResolvedQueries] = useState<ResolvedQuery[]>([]);
   const [filteredQueries, setFilteredQueries] = useState<ResolvedQuery[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,43 +74,61 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [selectedQuery, setSelectedQuery] = useState<ResolvedQuery | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [operationsUpdates, setOperationsUpdates] = useState<any[]>([]);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
-  const { user } = useAuth();
+
+  // Helper function to get user's assigned branches
+  const getUserBranches = (user: any) => {
+    if (!user) return [];
+    
+    // Priority: assignedBranches > branch > branchCode
+    if (user.assignedBranches && user.assignedBranches.length > 0) {
+      return user.assignedBranches;
+    }
+    
+    const branches = [];
+    if (user.branch) branches.push(user.branch);
+    if (user.branchCode && user.branchCode !== user.branch) branches.push(user.branchCode);
+    
+    return branches.filter(Boolean);
+  };
 
   useEffect(() => {
     fetchResolvedQueries();
     
     // Set up real-time updates
     const unsubscribe = queryUpdateService.subscribe('credit', (update) => {
-      console.log('📊 CreditQueriesResolved: Received query update:', update);
+      console.log('ðŸ“Š creditQueriesResolved: Received query update:', update);
       
-      // Check if this is a resolved query that's relevant to Credit team (with specific OTC, Deferral, and Waiver support)
+      // Check if this is a resolved query that's relevant to credit team (with specific OTC, Deferral, and Waiver support)
   const isResolvedQuery = update.action === 'resolved' || 
              update.action === 'updated' || 
              update.action === 'waived' ||
              ['resolved', 'approved', 'deferred', 'otc', 'waiver', 'waived'].includes(update.status);
       
-      const isRelevantToCredit = update.markedForTeam === 'credit' || 
-                                update.markedForTeam === 'both' || 
-                                update.team === 'credit' || 
-                                update.broadcast;
+      const isRelevantTocredit = update.markedForTeam === 'credit' || 
+                               update.markedForTeam === 'both' || 
+                               update.team === 'credit' || 
+                               update.broadcast;
       
-      if (isResolvedQuery && isRelevantToCredit) {
-        console.log(`🆕 New resolved query for Credit: ${update.appNo}`);
-        console.log(`👤 Resolved by: ${update.resolvedBy || 'Unknown'}`);
-        console.log(`🎯 Resolution type: ${update.action || update.status}`);
-        console.log(`📱 Broadcast: ${update.broadcast ? 'Yes' : 'No'}`);
-        console.log(`🔄 Update triggered by Operations/Approval`);
+      if (isResolvedQuery && isRelevantTocredit) {
+        console.log(`ðŸ†• New resolved query for credit: ${update.appNo}`);
+        console.log(`ðŸ‘¤ Resolved by: ${update.resolvedBy || 'Unknown'}`);
+        console.log(`ðŸŽ¯ Resolution type: ${update.action || update.status}`);
+        console.log(`ðŸ“± Broadcast: ${update.broadcast ? 'Yes' : 'No'}`);
+        console.log(`ðŸ”„ Update triggered by Operations/Approval`);
+        
+        // Set the last update time
+        setLastUpdateTime(new Date());
         
         // Immediately refresh the queries
         fetchResolvedQueries();
       }
     });
     
-    // Set up polling as a fallback
-    const interval = setInterval(fetchResolvedQueries, 30000);
+    // Set up more frequent polling for real-time updates (every 5 seconds)
+    const interval = setInterval(fetchResolvedQueries, 5000);
     
     return () => {
       unsubscribe();
@@ -119,11 +143,11 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
   const fetchResolvedQueries = async () => {
     try {
       setIsRefreshing(true);
-      // Fetch resolved queries specifically for Credit team - using resolved=true for better performance
       const userBranches = getUserBranches(user);
-      const branchParam = createBranchParam(userBranches);
-      const appNoParam = searchAppNo ? `&appNo=${encodeURIComponent(searchAppNo)}` : '';
-      const response = await fetch(`/api/queries?team=credit&resolved=true${branchParam}${appNoParam}`);
+      const branchParam = userBranches.length > 0 ? `&branches=${userBranches.join(',')}` : '';
+      
+      // Fetch resolved queries specifically for credit team - using resolved=true for better performance
+      const response = await fetch(`/api/queries?team=credit&resolved=true${branchParam}`);
       const result = await response.json();
       
       if (result.success) {
@@ -140,8 +164,8 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
           if (resolvedStatuses.includes(query.status)) {
             expandedResolvedQueries.push({
               ...query,
-              resolvedByTeam: query.resolvedByTeam || 'Credit',
-              resolvedBy: query.resolvedBy || query.approvedBy || 'Credit Team',
+              resolvedByTeam: query.resolvedByTeam || 'credit',
+              resolvedBy: query.resolvedBy || query.approvedBy || 'credit Team',
               resolvedAt: query.resolvedAt || query.approvedAt || query.lastUpdated,
               resolutionReason: query.resolutionReason || query.status
             });
@@ -157,8 +181,8 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
                   title: `Query ${index + 1} - ${query.appNo}`,
                   status: subQuery.status,
                   resolvedAt: subQuery.resolvedAt || subQuery.approvedAt || query.resolvedAt || query.lastUpdated,
-                  resolvedBy: subQuery.resolvedBy || subQuery.approvedBy || query.resolvedBy || 'Credit Team',
-                  resolvedByTeam: subQuery.resolvedByTeam || query.resolvedByTeam || 'Credit',
+                  resolvedBy: subQuery.resolvedBy || subQuery.approvedBy || query.resolvedBy || 'credit Team',
+                  resolvedByTeam: subQuery.resolvedByTeam || query.resolvedByTeam || 'credit',
                   resolutionReason: subQuery.resolutionReason || subQuery.status,
                   queryText: subQuery.text,
                   queryId: subQuery.id,
@@ -171,7 +195,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
           }
         });
         
-        console.log(`📊 CreditQueriesResolved: Found ${expandedResolvedQueries.length} resolved queries for Credit team`);
+        console.log(`ðŸ“Š creditQueriesResolved: Found ${expandedResolvedQueries.length} resolved queries for credit team`);
         setResolvedQueries(expandedResolvedQueries);
         setLastUpdateTime(new Date());
       }
@@ -245,7 +269,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
       case 'medium':
         return 'bg-yellow-100 text-yellow-800';
       case 'low':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-green-100 text-green-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -276,7 +300,11 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
       'Resolved By': query.resolvedBy || 'N/A',
       'Approver Name': (query as any).approverName || 'N/A',
       'Resolution Time': calculateResolutionTime(query.createdAt, query.resolvedAt),
-      'Remarks': query.resolutionReason || 'N/A'
+      'Remarks': query.resolutionReason || 'N/A',
+      'Sanctioned Amount': query.sanctionedAmount ? `â‚¹${query.sanctionedAmount.toLocaleString()}` : 'N/A',
+      'Loan Type': query.loanType || 'N/A',
+      'credit Executive': query.creditExec || 'N/A',
+      'Is Sanctioned': query.isSanctioned ? 'Yes' : 'No'
     }));
 
     const headers = Object.keys(csvData[0] || {}).join(',');
@@ -315,7 +343,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-3xl font-bold text-gray-900">Query Resolved</h1>
               {isRefreshing && (
-                <div className="flex items-center text-blue-600">
+                <div className="flex items-center text-green-600">
                   <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
                   <span className="text-sm font-medium">Updating...</span>
                 </div>
@@ -323,12 +351,12 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <p className="text-lg text-gray-700 font-medium">
-                {filteredQueries.length} resolved queries by Credit team
+                {filteredQueries.length} resolved queries by credit team
               </p>
               {lastUpdateTime && (
-                <div className="flex items-center text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full">
+                <div className="flex items-center text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
                   <Clock className="h-4 w-4 mr-1" />
-                  Last updated: {lastUpdateTime.toLocaleTimeString()}
+                  Live Data â€¢ Updated: {lastUpdateTime.toLocaleTimeString()}
                 </div>
               )}
             </div>
@@ -345,7 +373,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
             <button
               onClick={fetchResolvedQueries}
               disabled={isRefreshing}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               Refresh
@@ -354,7 +382,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
         </div>
       </div>
 
-      {/* Enhanced Stats Cards */}
+      {/* Stats Cards */}
             {/* Enhanced Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl shadow-lg border border-green-200 hover:shadow-xl transition-shadow">
@@ -369,9 +397,9 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
           </div>
         </div>
         
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl shadow-lg border border-blue-200 hover:shadow-xl transition-shadow">
+        <div className="bg-gradient-to-br from-green-50 to-indigo-50 p-6 rounded-xl shadow-lg border border-green-200 hover:shadow-xl transition-shadow">
           <div className="flex items-center">
-            <div className="p-3 bg-blue-500 rounded-lg">
+            <div className="p-3 bg-green-500 rounded-lg">
               <Clock className="h-8 w-8 text-white" />
             </div>
             <div className="ml-4">
@@ -421,9 +449,9 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
       </div>
 
       {/* Enhanced Filters with Better Visibility */}
-      <div className="mb-8 bg-gradient-to-r from-green-50 to-emerald-50 p-8 rounded-xl shadow-lg border-2 border-green-200">
+      <div className="mb-8 bg-gradient-to-r from-green-50 to-indigo-50 p-8 rounded-xl shadow-lg border-2 border-green-200">
         <div className="flex items-center mb-6">
-          <Search className="h-6 w-6 text-green-700 mr-3" />
+          <Filter className="h-6 w-6 text-green-700 mr-3" />
           <h3 className="text-xl font-bold text-gray-900">Filter & Search</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -433,7 +461,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-600 h-5 w-5" />
             <input
               type="text"
-              placeholder="Search resolved queries..."
+              placeholder="Search by app no, customer name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-4 border-2 border-gray-300 rounded-lg focus:ring-3 focus:ring-green-500 focus:border-green-500 text-sm font-medium text-gray-900 bg-white shadow-sm"
@@ -463,10 +491,10 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
               onChange={(e) => setPriorityFilter(e.target.value)}
               className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:ring-3 focus:ring-green-500 focus:border-green-500 text-sm font-bold text-gray-900 bg-white shadow-sm"
             >
-              <option value="all" className="font-bold">All Priority</option>
-              <option value="high" className="font-bold">High</option>
-              <option value="medium" className="font-bold">Medium</option>
-              <option value="low" className="font-bold">Low</option>
+              <option value="all" className="font-bold">All Priorities</option>
+              <option value="high" className="font-bold">High Priority</option>
+              <option value="medium" className="font-bold">Medium Priority</option>
+              <option value="low" className="font-bold">Low Priority</option>
             </select>
           </div>
 
@@ -487,12 +515,13 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
       </div>
 
       {/* Resolved Queries List */}
-      <div className="space-y-4">
+      {/* Enhanced Resolved Queries List */}
+      <div className="space-y-6">
         {filteredQueries.length > 0 ? (
           filteredQueries.map((query) => (
             <div
               key={query.id}
-              className="bg-white border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 hover:border-green-300"
+              className="bg-white border border-gray-200 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1"
               onClick={() => handleQueryClick(query)}
             >
               <div className="p-6">
@@ -502,15 +531,20 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
                       <div className="p-2 bg-green-100 rounded-lg">
                         <CheckCircle className="h-5 w-5 text-green-600" />
                       </div>
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-800">
-                        ✓ Resolved
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800">
+                        âœ“ Resolved
                       </span>
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${getPriorityColor(query.priority)}`}>
+                      {query.isSanctioned && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-purple-100 text-purple-800">
+                          ðŸ† Sanctioned
+                        </span>
+                      )}
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${getPriorityColor(query.priority)}`}>
                         {query.priority?.toUpperCase()}
                       </span>
                       {query.resolutionReason && (
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
-                          {query.resolutionReason.toUpperCase()}
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800">
+                          {query.resolutionReason}
                         </span>
                       )}
                     </div>
@@ -521,57 +555,86 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
                     
                     {/* Show specific query text for individual resolved queries */}
                     {query.isIndividualQuery && query.queryText && (
-                      <div className="mb-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                        <p className="text-sm font-medium text-blue-900 mb-1">Resolved Query:</p>
-                        <p className="text-sm text-blue-800">{query.queryText}</p>
+                      <div className="mb-4 p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
+                        <p className="text-sm font-medium text-green-900 mb-1">Resolved Query:</p>
+                        <p className="text-sm text-green-800">{query.queryText}</p>
                       </div>
                     )}
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-4">
                       <div className="flex items-center bg-gray-50 p-3 rounded-lg">
-                        <User className="h-4 w-4 mr-2 text-blue-600 flex-shrink-0" />
+                        <User className="h-4 w-4 mr-2 text-green-600 flex-shrink-0" />
                         <div>
-                          <p className="font-bold text-gray-900">
+                          <p className="font-medium text-gray-900">
                             {query.customerName}
                           </p>
-                          <p className="text-xs text-gray-600 font-medium">Customer</p>
+                          <p className="text-xs text-gray-600">Customer</p>
                         </div>
                       </div>
                       <div className="flex items-center bg-gray-50 p-3 rounded-lg">
                         <Building className="h-4 w-4 mr-2 text-purple-600 flex-shrink-0" />
                         <div>
-                          <p className="font-bold text-gray-900">
+                          <p className="font-medium text-gray-900">
                             {query.branch}
                           </p>
-                          <p className="text-xs text-gray-600 font-medium">Branch</p>
+                          <p className="text-xs text-gray-600">Branch</p>
                         </div>
                       </div>
                       <div className="flex items-center bg-gray-50 p-3 rounded-lg">
                         <Clock className="h-4 w-4 mr-2 text-amber-600 flex-shrink-0" />
                         <div>
-                          <p className="font-bold text-gray-900">{calculateResolutionTime(query.createdAt, query.resolvedAt)}</p>
-                          <p className="text-xs text-gray-600 font-medium">Resolution Time</p>
+                          <p className="font-medium text-gray-900">{calculateResolutionTime(query.createdAt, query.resolvedAt)}</p>
+                          <p className="text-xs text-gray-600">Resolution Time</p>
                         </div>
                       </div>
                       <div className="flex items-center bg-gray-50 p-3 rounded-lg">
                         <User className="h-4 w-4 mr-2 text-green-600 flex-shrink-0" />
                         <div>
-                          <p className="font-bold text-gray-900">{query.resolvedBy || 'Credit Team'}</p>
-                          <p className="text-xs text-gray-600 font-medium">Resolved By</p>
+                          <p className="font-medium text-gray-900">{query.resolvedBy || 'credit Team'}</p>
+                          <p className="text-xs text-gray-600">Resolved By</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
-                      <p className="text-sm font-bold text-gray-800">
-                        <span className="text-green-700 font-bold">Resolved on:</span> {' '}
+                    {/* Additional info for sanctioned applications */}
+                    {query.isSanctioned && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                        <div className="flex items-center bg-purple-50 p-3 rounded-lg">
+                          <span className="text-purple-600 mr-2">ðŸ’°</span>
+                          <div>
+                            <p className="font-medium text-gray-900">â‚¹{query.sanctionedAmount?.toLocaleString()}</p>
+                            <p className="text-xs text-gray-600">Sanctioned Amount</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center bg-purple-50 p-3 rounded-lg">
+                          <span className="text-purple-600 mr-2">ðŸ“‹</span>
+                          <div>
+                            <p className="font-medium text-gray-900">{query.loanType}</p>
+                            <p className="text-xs text-gray-600">Loan Type</p>
+                          </div>
+                        </div>
+                        {query.creditExec && (
+                          <div className="flex items-center bg-purple-50 p-3 rounded-lg">
+                            <span className="text-purple-600 mr-2">ðŸ‘¨â€ðŸ’¼</span>
+                            <div>
+                              <p className="font-medium text-gray-900">{query.creditExec}</p>
+                              <p className="text-xs text-gray-600">credit Executive</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="bg-gradient-to-r from-green-50 to-indigo-50 p-4 rounded-lg border border-green-200">
+                      <p className="text-sm font-medium text-gray-800">
+                        <span className="text-green-700 font-semibold">Resolved on:</span> {' '}
                         {new Date(query.resolvedAt).toLocaleDateString()} at {new Date(query.resolvedAt).toLocaleTimeString()}
                       </p>
                     </div>
                   </div>
                   
                   <div className="flex flex-col items-end space-y-2 ml-6">
-                    <span className="text-xs text-gray-600 bg-gray-100 px-3 py-2 rounded-full font-medium">
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                       {new Date(query.resolvedAt).toLocaleDateString()}
                     </span>
                   </div>
@@ -580,16 +643,28 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
             </div>
           ))
         ) : (
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-xl p-12 text-center shadow-lg">
-            <div className="mx-auto w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-6">
+          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center shadow-lg">
+            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <CheckCircle className="h-12 w-12 text-gray-400" />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-4">No resolved queries found</h3>
-            <p className="text-gray-600 font-medium">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No resolved queries found</h3>
+            <p className="text-gray-600 max-w-md mx-auto">
               {searchTerm || dateFilter !== 'all' || priorityFilter !== 'all'
-                ? 'Try adjusting your filters to see more results.'
-                : 'No queries have been resolved by the credit team yet.'}
+                ? 'Try adjusting your filters to see more results. You can clear all filters and search again.'
+                : 'No queries have been resolved by the credit team yet. Resolved queries will appear here once team members take action on pending queries.'}
             </p>
+            {(searchTerm || dateFilter !== 'all' || priorityFilter !== 'all') && (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setDateFilter('all');
+                  setPriorityFilter('all');
+                }}
+                className="mt-4 inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Clear All Filters
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -618,34 +693,34 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                   <div>
                     <span className="font-medium text-gray-900">Customer:</span>
-                    <p className="text-gray-600">{selectedQuery.customerName}</p>
+                    <p className="text-gray-800">{selectedQuery.customerName}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Branch:</span>
-                    <p className="text-gray-600">{selectedQuery.branch}</p>
+                    <p className="text-gray-800">{selectedQuery.branch}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Created:</span>
-                    <p className="text-gray-600">{new Date(selectedQuery.createdAt).toLocaleString()}</p>
+                    <p className="text-gray-800">{new Date(selectedQuery.createdAt).toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Resolved:</span>
-                    <p className="text-gray-600">{new Date(selectedQuery.resolvedAt).toLocaleString()}</p>
+                    <p className="text-gray-800">{new Date(selectedQuery.resolvedAt).toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Resolution Time:</span>
-                    <p className="text-gray-600">{calculateResolutionTime(selectedQuery.createdAt, selectedQuery.resolvedAt)}</p>
+                    <p className="text-gray-800">{calculateResolutionTime(selectedQuery.createdAt, selectedQuery.resolvedAt)}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Resolved by:</span>
-                    <p className="text-gray-600">{selectedQuery.resolvedBy || 'Credit Team'}</p>
+                    <p className="text-gray-800">{selectedQuery.resolvedBy || 'credit Team'}</p>
                   </div>
                 </div>
 
                 {selectedQuery.resolutionReason && (
                   <div className="mb-4">
                     <span className="font-medium text-gray-900">Resolution Reason:</span>
-                    <p className="text-gray-600 mt-1">{selectedQuery.resolutionReason}</p>
+                    <p className="text-gray-800 mt-1">{selectedQuery.resolutionReason}</p>
                   </div>
                 )}
 
@@ -661,7 +736,7 @@ export default function CreditQueriesResolved({ searchAppNo }: CreditQueriesReso
                               {new Date(message.timestamp).toLocaleString()}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700">{message.text}</p>
+                          <p className="text-sm text-gray-800">{message.text}</p>
                         </div>
                       ))}
                     </div>

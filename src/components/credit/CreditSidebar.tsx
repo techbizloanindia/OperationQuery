@@ -4,7 +4,10 @@ import React from 'react';
 import { 
   MessageSquare,
   CheckCircle,
-  Badge
+  FileText,
+  Settings,
+  Badge,
+  List
 } from 'lucide-react';
 import { CreditTabType } from './CreditDashboard';
 
@@ -22,7 +25,7 @@ export default function CreditSidebar({
   const tabs = [
     {
       id: 'queries-raised' as CreditTabType,
-      label: 'Queries Raised',
+      label: 'Query Raised',
       icon: MessageSquare,
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',
@@ -31,7 +34,7 @@ export default function CreditSidebar({
     },
     {
       id: 'queries-resolved' as CreditTabType,
-      label: 'Queries Resolved',
+      label: 'Query Resolved',
       icon: CheckCircle,
       color: 'text-green-600',
       bgColor: 'bg-green-100',
@@ -42,7 +45,7 @@ export default function CreditSidebar({
   return (
     <div className="hidden lg:flex lg:flex-shrink-0">
       <div className="flex flex-col w-80">
-        <div className="flex-1 min-h-0 border-r border-gray-200 bg-gradient-to-b from-white to-gray-50 shadow-xl">
+        <div className="flex-1 min-h-0 border-r border-gray-200 bg-gradient-to-b from-white to-green-50 shadow-xl">
           <div className="flex-1 flex flex-col pt-6 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-6 mb-8">
               <div className="flex items-center space-x-3">
@@ -85,7 +88,7 @@ export default function CreditSidebar({
                           </span>
                         )}
                       </div>
-                      <p className={`text-xs font-medium ${
+                      <p className={`text-xs mt-0.5 ${
                         isActive ? 'text-current opacity-80' : 'text-gray-500'
                       }`}>
                         {tab.description}
@@ -108,7 +111,7 @@ export default function CreditSidebar({
                       Credit Team
                     </p>
                     <p className="text-xs text-green-700">
-                      Risk Assessment System
+                      Query Management System
                     </p>
                   </div>
                 </div>

@@ -62,7 +62,23 @@ const extractNumericQueryId = (queryId: number | string): number => {
   throw new Error(`Cannot extract numeric query ID from: ${queryIdStr}`);
 };
 
-// Real-time TAT Display Component for Credit
+// Local getUserBranches to handle the User type difference
+const getUserBranches = (user: any): string[] => {
+  if (!user) return [];
+  
+  // Handle different branch field types
+  if (Array.isArray(user.assignedBranches)) {
+    return user.assignedBranches.filter(Boolean);
+  }
+  
+  const branches: string[] = [];
+  if (user.branch) branches.push(user.branch);
+  if (user.branchCode && user.branchCode !== user.branch) branches.push(user.branchCode);
+  
+  return branches.filter(Boolean);
+};
+
+// Real-time TAT Display Component for credit
 const RealTimeTATDisplay: React.FC<{ submittedAt: string | Date; tatHours?: number }> = ({ 
   submittedAt, 
   tatHours = 24 
@@ -122,6 +138,11 @@ interface Query {
   tat?: string;
   queryId?: string;
   queryIndex?: number;
+  resolvedBy?: string; // Added for resolved queries
+  resolvedAt?: string; // Added for resolved queries
+  resolutionReason?: string; // Added for resolved queries
+  resolutionTeam?: string; // Added for resolved queries
+  resolvedByTeam?: string; // Added for resolved queries
 }
 
 interface ChatMessage {
@@ -139,29 +160,13 @@ interface ChatMessage {
   isReply?: boolean;
 }
 
-// Local getUserBranches to handle the User type difference
-const getUserBranches = (user: any): string[] => {
-  if (!user) return [];
-  
-  // Handle different branch field types
-  if (Array.isArray(user.assignedBranches)) {
-    return user.assignedBranches.filter(Boolean);
-  }
-  
-  const branches: string[] = [];
-  if (user.branch) branches.push(user.branch);
-  if (user.branchCode && user.branchCode !== user.branch) branches.push(user.branchCode);
-  
-  return branches.filter(Boolean);
-};
-
 // View types for the interface
 type ViewType = 'applications' | 'queries' | 'chat';
 
 // Fetch queries function with app number filtering - fetch all queries to properly filter resolved ones
 const fetchQueries = async (userBranches: string[] = [], appNoFilter?: string): Promise<Query[]> => {
   try {
-    console.log('🔍 Credit Dashboard: Fetching all credit queries from API...');
+    console.log('🔍 credit Dashboard: Fetching all credit queries from API...');
     const branchParam = createBranchParam(userBranches);
     const appNoParam = appNoFilter ? `&appNo=${encodeURIComponent(appNoFilter)}` : '';
     // Fetch all queries (not just pending) so we can properly filter resolved ones on frontend
@@ -174,37 +179,12 @@ const fetchQueries = async (userBranches: string[] = [], appNoFilter?: string): 
     
     // Filter queries marked specifically for credit team only
     const filteredQueries = result.data.filter((queryData: any) => {
-      const isCreditQuery = queryData.markedForTeam === 'credit' ||
-             queryData.sendToCredit === true ||
-             queryData.sendTo === 'Credit' ||
-             (Array.isArray(queryData.sendTo) && queryData.sendTo.includes('Credit')) ||
+      return queryData.markedForTeam === 'credit' ||
+             queryData.sendTocredit === true ||
+             queryData.sendTo === 'credit' ||
+             (Array.isArray(queryData.sendTo) && queryData.sendTo.includes('credit')) ||
              queryData.team === 'credit';
-      
-      // Log potential sales contamination
-      if (!isCreditQuery && (
-        queryData.markedForTeam === 'sales' || 
-        queryData.sendToSales === true ||
-        queryData.sendTo === 'Sales' ||
-        (Array.isArray(queryData.sendTo) && queryData.sendTo.includes('Sales'))
-      )) {
-        console.warn('🚨 Credit Dashboard: Filtering out SALES query that was returned by API:', {
-          id: queryData.id,
-          appNo: queryData.appNo,
-          markedForTeam: queryData.markedForTeam,
-          sendTo: queryData.sendTo,
-          team: queryData.team
-        });
-      }
-      
-      return isCreditQuery;
     });
-    
-    console.log(`🎯 Credit Dashboard: Filtered ${result.data.length} queries down to ${filteredQueries.length} credit queries`);
-    
-    if (result.data.length > filteredQueries.length) {
-      const filtered = result.data.length - filteredQueries.length;
-      console.log(`🔍 Credit Dashboard: Filtered out ${filtered} non-credit queries from API response`);
-    }
     
     // Convert the API response to the format expected by the component
     const queries = filteredQueries.map((queryData: any) => ({
@@ -281,19 +261,19 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
   
   // Fetch queries with real-time updates - now fetches all queries and filters on frontend
   const { data: queries, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['creditQueries', 'all', searchAppNo], // Changed from 'pending' to 'all'
+    queryKey: ['creditQueries', 'all', user?.employeeId, searchAppNo], // Changed from 'pending' to 'all'
     queryFn: async () => {
       setConnectionStatus('connecting');
       try {
-        console.log('🔍 Credit Dashboard: Fetching all queries from API...');
+        console.log('🔍 credit Dashboard: Fetching all queries from API...');
         const userBranches = getUserBranches(user);
         const result = await fetchQueries(userBranches, searchAppNo);
-        console.log(`🔍 Credit Dashboard: Received ${result.length} total queries from API`);
+        console.log(`🔍 credit Dashboard: Received ${result.length} total queries from API`);
         setConnectionStatus('connected');
         setLastUpdated(new Date());
         return result;
       } catch (error) {
-        console.error('🔍 Credit Dashboard: Error fetching queries:', error);
+        console.error('🔍 credit Dashboard: Error fetching queries:', error);
         setConnectionStatus('disconnected');
         throw error;
       }
@@ -308,7 +288,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
   useEffect(() => {
     const handleQueryAdded = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('🔔 Credit Dashboard: New query added event detected!', customEvent?.detail);
+      console.log('🔔 credit Dashboard: New query added event detected!', customEvent?.detail);
       setNewQueryCount(prev => prev + 1);
       showSuccessMessage('New query added! Refreshing data... 🔔');
       refetch();
@@ -316,13 +296,13 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
 
     const handleQueryUpdated = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('🔄 Credit Dashboard: Query updated event detected!', customEvent?.detail);
+      console.log('🔄 credit Dashboard: Query updated event detected!', customEvent?.detail);
       showSuccessMessage('Query updated! Refreshing data... ✅');
       refetch();
     };
 
     // Add event listeners
-    console.log('📡 Credit Dashboard: Setting up event listeners...');
+    console.log('📡 credit Dashboard: Setting up event listeners...');
     window.addEventListener('queryAdded', handleQueryAdded);
     window.addEventListener('queryUpdated', handleQueryUpdated);
     window.addEventListener('queryResolved', handleQueryUpdated);
@@ -330,7 +310,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
     // Subscribe to real-time updates from queryUpdateService
     import('@/lib/queryUpdateService').then(({ queryUpdateService }) => {
       const unsubscribe = queryUpdateService.subscribe('credit', (update) => {
-        console.log('📨 Credit Dashboard received real-time update:', update.appNo, update.action);
+        console.log('📨 credit Dashboard received real-time update:', update.appNo, update.action);
         
         // Handle different types of updates
         if (update.action === 'created' && (update.markedForTeam === 'credit' || update.markedForTeam === 'both')) {
@@ -342,9 +322,8 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
           showSuccessMessage(`New message for ${update.appNo}! 💬`);
           
           if (selectedQuery && selectedQuery.appNo === update.appNo && currentView === 'chat') {
-            const chatQueryId = (selectedQuery as any).queryId || selectedQuery.id;
-            console.log(`🔄 Credit Dashboard: Reloading chat messages for queryId: ${chatQueryId} due to real-time update`);
-            loadChatMessages(Number(chatQueryId));
+            const chatQueryId = selectedQuery.queryId || selectedQuery.id.toString();
+            loadChatMessages(chatQueryId);
           }
           
           setNewQueryCount(prev => prev + 1);
@@ -355,27 +334,18 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         setLastUpdated(new Date());
       });
       
-      console.log('🌐 Credit Dashboard: Subscribed to real-time query updates');
+      console.log('🌐 credit Dashboard: Subscribed to real-time query updates');
       
       return unsubscribe;
     });
 
     return () => {
-      console.log('🧹 Credit Dashboard: Cleaning up event listeners...');
+      console.log('🧹 credit Dashboard: Cleaning up event listeners...');
       window.removeEventListener('queryAdded', handleQueryAdded);
       window.removeEventListener('queryUpdated', handleQueryUpdated);
       window.removeEventListener('queryResolved', handleQueryUpdated);
     };
   }, [refetch, selectedQuery, currentView]);
-
-  // Load chat messages when selectedQueryForChat changes (for proper chat isolation)
-  useEffect(() => {
-    if (selectedQueryForChat && isChatOpen) {
-      const chatQueryId = selectedQueryForChat.queryId || selectedQueryForChat.id;
-      console.log(`🎯 Credit Dashboard: Loading chat messages for selectedQueryForChat: ${chatQueryId}`);
-      loadChatMessages(Number(chatQueryId));
-    }
-  }, [selectedQueryForChat, isChatOpen]);
 
   // Extract individual queries for display with sequential numbering - exclude resolved queries
   const individualQueries = React.useMemo(() => {
@@ -394,26 +364,34 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
           'approved-by-credit', 'deferred-by-credit', 'otc-by-credit', 'waived-by-credit'
         ].includes(queryStatus);
         
-        console.log(`🔍 Credit Query Status Check: ${queryGroup.appNo} - Query ${index + 1} - Status: ${queryStatus} - IsResolved: ${isResolved}`);
+        console.log(`🔍 credit Query Status Check: ${queryGroup.appNo} - Query ${index + 1} - Status: ${queryStatus} - IsResolved: ${isResolved}`);
         
         // Only include queries that are NOT resolved (still pending)
         if (!isResolved) {
+          // CRITICAL: Use the unique query.id string for proper chat isolation
+          // The queryId field is the unique identifier for each individual query
+          const uniqueQueryId = query.id || `${queryGroup.id}-q${index}`;
+          
+          // Generate a numeric ID for the component (can be non-unique for display)
+          // But use queryId (string) for chat API calls to ensure isolation
+          const numericId = Date.now() + individual.length;
+          
           individual.push({
             ...queryGroup,
             queryIndex: individual.length + 1, // Sequential numbering using array index + 1
             queryText: query.text,
-            queryId: query.id || `${queryGroup.id}-${index}`,
-            id: parseInt(query.id?.split('-')[0] || queryGroup.id.toString()) + index,
+            queryId: uniqueQueryId, // The unique string ID for chat isolation
+            id: numericId, // Numeric ID for component compatibility
             title: `Query ${individual.length + 1} - ${queryGroup.appNo}`,
             status: queryStatus
           });
         } else {
-          console.log(`✅ Credit Query EXCLUDED (resolved): ${queryGroup.appNo} - Status: ${queryStatus}`);
+          console.log(`✅ credit Query EXCLUDED (resolved): ${queryGroup.appNo} - Status: ${queryStatus}`);
         }
       });
     });
     
-    console.log(`📊 Credit Dashboard: Total individual queries after filtering: ${individual.length} (pending only)`);
+    console.log(`📊 credit Dashboard: Total individual queries after filtering: ${individual.length} (pending only)`);
     return individual;
   }, [queries]);
 
@@ -455,10 +433,9 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
   const handleSelectQuery = (query: Query) => {
     setSelectedQuery(query);
     setCurrentView('chat');
-    // Use the specific queryId if available, otherwise use the main id
-    const chatQueryId = (query as any).queryId || query.id;
-    console.log(`🎯 Credit Dashboard: Loading chat for queryId: ${chatQueryId} (App: ${query.appNo})`);
-    loadChatMessages(Number(chatQueryId));
+    // Use queryId (string) instead of id (number) for proper chat isolation
+    const chatQueryId = query.queryId || query.id.toString();
+    loadChatMessages(chatQueryId);
   };
 
   const handleBackToApplications = () => {
@@ -475,7 +452,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
 
   // Handle opening chat for a specific query
   const handleOpenChat = (query: Query & { queryIndex: number; queryText: string; queryId: string }) => {
-    console.log(`🎯 Credit Dashboard: Opening chat for query:`, {
+    console.log(`🎯 credit Dashboard: Opening chat for query:`, {
       queryId: query.queryId || query.id,
       id: query.id,
       appNo: query.appNo,
@@ -530,7 +507,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
   // Action mutation for handling query actions
   const actionMutation = useMutation({
     mutationFn: async ({ action, queryId, person, remarks }: QueryActionParams) => {
-      console.log('🔥 MUTATION STARTED - Credit action mutation triggered');
+      console.log('🔥 MUTATION STARTED - credit action mutation triggered');
       console.log('📊 Mutation input params:', { action, queryId, person, remarks });
       
       // Don't extract numeric ID - use the original UUID queryId directly
@@ -542,11 +519,11 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         queryId: originalQueryId, // Use original UUID queryId
         action,
         remarks,
-        creditTeamMember: user?.name || 'Credit Team',
-        team: 'Credit'
+        creditTeamMember: user?.name || 'credit Team',
+        team: 'credit'
       };
 
-      console.log('📝 Credit action request validation passed:', {
+      console.log('📝 credit action request validation passed:', {
         originalQueryId: queryId,
         action,
         team: requestBody.team,
@@ -559,12 +536,13 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
       if (person && ['approve', 'deferral', 'otc', 'waiver'].includes(action)) {
         requestBody.approvedBy = person; // Mark who approved it
         requestBody.assignedTo = null; // Don't assign to anyone
-        console.log('✅ Credit team approval: marking query as approved by', person);
+        console.log('✅ credit team approval: marking query as approved by', person);
       } else if (person) {
         requestBody.assignedTo = person; // For other actions, keep assignment logic
       }
 
       console.log('📝 Sending credit action request:', requestBody);
+      console.log('🌐 Making API call to /api/query-actions...');
 
       const response = await fetch('/api/query-actions', {
         method: 'POST',
@@ -572,7 +550,12 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         body: JSON.stringify(requestBody),
       });
 
-      console.log('🔍 Credit action response status:', response.status, response.statusText);
+      console.log('🔍 credit action response received:', {
+        status: response.status, 
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
       
       if (!response.ok) {
         let errorData;
@@ -591,7 +574,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
           try {
             errorData = JSON.parse(errorText);
           } catch (parseError) {
-            console.error('❌ Credit action failed - Could not parse error response as JSON:', parseError);
+            console.error('❌ credit action failed - Could not parse error response as JSON:', parseError);
             console.error('📋 Raw response text:', errorText);
             throw new Error(`HTTP ${response.status}: ${response.statusText || 'Failed to submit action'}. Response: ${errorText.substring(0, 200)}`);
           }
@@ -599,18 +582,21 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
           throw new Error(`HTTP ${response.status}: ${response.statusText || 'Failed to submit action'}. No response body.`);
         }
         
-        console.error('❌ Credit action failed:', errorData);
+        console.error('❌ credit action failed:', errorData);
         throw new Error(errorData?.error || errorData?.message || `HTTP ${response.status}: ${response.statusText || 'Failed to submit action'}`);
       }
       
       const result = await response.json();
-      console.log('✅ Credit action completed successfully:', result);
+      console.log('✅ credit action completed successfully:', result);
+      console.log('🎉 API Response data:', JSON.stringify(result, null, 2));
       return result;
     },
     onSuccess: (data, variables) => {
-      console.log('🎉 Credit action success - starting real-time updates:', { data, variables });
+      console.log('🎉 credit action success - starting real-time updates:', { data, variables });
+      console.log('📊 Success callback triggered with data:', JSON.stringify(data, null, 2));
       
       // Close modal and reset form
+      console.log('🔄 Closing modal and resetting form...');
       setShowActionModal(false);
       setActionRemarks('');
       setSelectedPerson('');
@@ -625,7 +611,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                               variables.action === 'waiver' ? 'waived' : 'resolved';
         
         // Update the queries data directly to trigger immediate re-filtering
-        queryClient.setQueryData(['creditQueries', 'all', searchAppNo], (oldData: Query[] | undefined) => {
+        queryClient.setQueryData(['creditQueries', 'all', user?.employeeId, searchAppNo], (oldData: Query[] | undefined) => {
           if (!oldData) return oldData;
           
           return oldData.map(queryGroup => {
@@ -638,7 +624,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                     return {
                       ...q,
                       status: resolvedStatus,
-                      resolvedBy: user?.name || 'Credit Team',
+                      resolvedBy: user?.name || 'credit Team',
                       resolvedAt: new Date().toISOString(),
                       resolutionReason: variables.action
                     };
@@ -653,9 +639,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         
         setSelectedQuery(null); // Clear selected query since it's now resolved
         console.log('✅ Optimistic update applied and query cleared from selection');
-      }
-      
-      // Force immediate data refresh with multiple strategies
+      }      // Force immediate data refresh with multiple strategies
       console.log('🔄 Triggering comprehensive data refresh...');
       
       // Strategy 1: Invalidate all relevant query caches (including Operations Dashboard)
@@ -677,6 +661,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
       });
       
       // Strategy 2: Force immediate refetch
+      console.log('🔄 Forcing immediate refetch...');
       refetch().then(() => {
         console.log('✅ Main query refetch completed');
       }).catch(error => {
@@ -689,21 +674,21 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
       switch (variables.action) {
         case 'approve':
           message = variables.person ? 
-            `Single query approved by ${variables.person}! Query moved to Credit resolved section. ✅` :
-            `Single query approved successfully! Query moved to Credit resolved section. ✅`;
+            `Single query approved by ${variables.person}! Query moved to credit resolved section. ✅` :
+            `Single query approved successfully! Query moved to credit resolved section. ✅`;
           break;
         case 'deferral':
           message = variables.person ? 
-            `Single query deferred by ${variables.person}! Query moved to Credit resolved section. 📋` :
-            `Single query deferred successfully! Query moved to Credit resolved section. 📋`;
+            `Single query deferred by ${variables.person}! Query moved to credit resolved section. 📋` :
+            `Single query deferred successfully! Query moved to credit resolved section. 📋`;
           break;
         case 'otc':
           message = variables.person ? 
-            `Single query OTC processed by ${variables.person}! Query moved to Credit resolved section. 🏢` :
-            `Single query OTC processed successfully! Query moved to Credit resolved section. 🏢`;
+            `Single query OTC processed by ${variables.person}! Query moved to credit resolved section. 🏢` :
+            `Single query OTC processed successfully! Query moved to credit resolved section. 🏢`;
           break;
         case 'waiver':
-          message = `Single query waived successfully! Query moved to Credit resolved section. ✅`;
+          message = `Single query waived successfully! Query moved to credit resolved section. ✅`;
           break;
       }
       
@@ -737,17 +722,20 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         }, 1000);
       }
       
-      console.log('✅ Credit action success handling completed');
+      console.log('✅ credit action success handling completed');
     },
     onError: (error: Error, variables) => {
-      console.error('💥 Credit action failed:', {
+      console.error('💥 credit action failed:', {
         error: error.message,
         stack: error.stack,
         variables,
         timestamp: new Date().toISOString()
       });
+      console.error('💥 DETAILED ERROR INFO:', error);
       const actionName = variables.action.charAt(0).toUpperCase() + variables.action.slice(1);
-      showSuccessMessage(`❌ Error: Failed to ${variables.action} query. ${error.message}`);
+      const errorMessage = `❌ Error: Failed to ${variables.action} query. ${error.message}`;
+      console.log('📢 Showing error message:', errorMessage);
+      showSuccessMessage(errorMessage);
     }
   });
 
@@ -778,7 +766,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
       return;
     }
     
-    // Validation - remarks are required for all actions
+    // Validation
     if (!actionRemarks.trim()) {
       console.error('❌ No remarks provided');
       showSuccessMessage('❌ Remarks are required for all actions. Please enter your remarks.');
@@ -795,217 +783,97 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
     }
     
     console.log(`🎯 Processing credit query: ${individualQueryId} for app: ${selectedQuery.appNo}`);
-    console.log('📋 Action details:', {
+    console.log('📋 Action details (before extraction):', {
       action: actionType,
-      queryId: individualQueryId,
+      originalQueryId: individualQueryId,
       queryIdType: typeof individualQueryId,
       person: selectedPerson || 'None',
       remarks: actionRemarks,
       timestamp: new Date().toISOString()
     });
 
+    console.log('🚀 About to call actionMutation.mutate...');
     actionMutation.mutate({
       action: actionType!,
       queryId: individualQueryId,
       person: selectedPerson || undefined,
-      remarks: actionRemarks.trim()
+      remarks: actionRemarks
     });
+    console.log('✅ actionMutation.mutate called successfully');
   };
 
-  // Load chat messages with enhanced isolation validation
-  const loadChatMessages = async (queryId: number) => {
+  // Load chat messages - CRITICAL: Use string queryId for proper isolation
+  const loadChatMessages = async (queryId: string | number) => {
     try {
-      // CRITICAL FIX: Ensure we use the numeric queryId for consistent chat isolation
-      const numericQueryId = extractNumericQueryId(queryId);
-      const queryIdStr = numericQueryId.toString();
+      // Ensure queryId is converted to string for API call
+      const queryIdStr = queryId.toString();
+      console.log(`🔄 Loading chat messages for query ${queryIdStr}`);
       
-      console.log(`🔄 Credit Dashboard: Loading chat messages for query ${queryIdStr} (converted from ${queryId})`);
-      
-      const response = await fetch(`/api/queries/${numericQueryId}/chat`);
+      const response = await fetch(`/api/queries/${queryIdStr}/chat`);
       const result = await response.json();
       
       if (result.success) {
         const messages = result.data || [];
-        console.log(`📬 Credit Dashboard: Loaded ${messages.length} messages for query ${queryIdStr}`);
-        
-        // CRITICAL: Validate that ALL messages belong to this specific query using numeric ID
-        const validMessages = messages.filter((msg: any) => {
-          const msgQueryId = msg.queryId?.toString();
-          const msgNumericId = extractNumericQueryId(msgQueryId || '0').toString();
-          const isValidQuery = msgNumericId === queryIdStr;
-          
-          if (!isValidQuery) {
-            console.error(`🚨 CONTAMINATION DETECTED: Message from query ${msgQueryId} (numeric: ${msgNumericId}) found in query ${queryIdStr}!`, {
-              messageId: msg.id,
-              sender: msg.sender,
-              team: msg.team,
-              message: msg.message
-            });
-          }
-          
-          return isValidQuery;
-        });
-        
-        if (validMessages.length !== messages.length) {
-          const contaminated = messages.length - validMessages.length;
-          console.warn(`⚠️ Credit Dashboard: Filtered out ${contaminated} contaminated messages from other queries`);
-        }
-        
-        // Log message details to debug contamination
-        validMessages.forEach((msg: any, index: number) => {
-          console.log(`  📝 Message ${index + 1}:`, {
-            id: msg.id,
-            queryId: msg.queryId,
-            sender: msg.sender,
-            senderRole: msg.senderRole,
-            team: msg.team,
-            messagePreview: msg.message?.substring(0, 50) + '...',
-            timestamp: msg.timestamp
-          });
-        });
-        
-        // Check for potential contamination from sales messages
-        const salesMessages = validMessages.filter((msg: any) => 
-          msg.team === 'Sales' || msg.senderRole === 'sales'
-        );
-        
-        if (salesMessages.length > 0) {
-          console.warn(`⚠️ Credit Dashboard: Found ${salesMessages.length} SALES messages in credit query ${queryIdStr} - potential contamination!`);
-          salesMessages.forEach((msg: any, index: number) => {
-            console.warn(`  🚨 Sales Message ${index + 1}:`, {
-              id: msg.id,
-              queryId: msg.queryId,
-              sender: msg.sender,
-              senderRole: msg.senderRole,
-              team: msg.team,
-              message: msg.message
-            });
-          });
-        }
+        console.log(`📬 Loaded ${messages.length} messages for query ${queryIdStr}`);
         
         // Transform messages to include proper flags for ChatDisplay
-        const transformedMessages = validMessages.map((msg: any) => ({
+        const transformedMessages = messages.map((msg: any) => ({
           ...msg,
           isQuery: msg.team === 'Operations' || msg.senderRole === 'operations',
-          isReply: msg.team === 'Credit' || msg.senderRole === 'credit'
+          isReply: msg.team === 'credit' || msg.senderRole === 'credit'
         }));
         
-        // Sort messages by timestamp (oldest first)
+        // Sort messages by timestamp
         transformedMessages.sort((a: { timestamp: string }, b: { timestamp: string }) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
-        // Set all messages from database - no filtering of temporary messages
         setChatMessages(transformedMessages);
-        
-        console.log(`✅ Credit Dashboard: Displaying ${transformedMessages.length} validated messages for query ${queryIdStr}`);
         
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 100);
       } else {
-        console.error('❌ Credit Dashboard: Failed to load chat messages:', result.error);
+        console.error('Failed to load chat messages:', result.error);
         showSuccessMessage('❌ Failed to load chat messages');
       }
     } catch (error) {
-      console.error('💥 Credit Dashboard: Error loading chat messages:', error);
+      console.error('Error loading chat messages:', error);
       showSuccessMessage('❌ Error loading chat messages');
     }
   };
 
   // Send message
   const handleSendMessage = async () => {
-    // Use selectedQueryForChat if available (for chat modal), otherwise selectedQuery (for inline chat)
-    const queryForMessage = selectedQueryForChat || selectedQuery;
-    if (!newMessage.trim() || !queryForMessage) {
-      console.error('❌ Credit Dashboard: Cannot send message - missing message or query', {
-        hasMessage: !!newMessage.trim(),
-        hasQuery: !!queryForMessage
-      });
-      showSuccessMessage('❌ Error: Please enter a message and select a query.');
-      return;
-    }
+    if (!newMessage.trim() || !selectedQuery) return;
 
     try {
-      // CRITICAL FIX: Extract numeric queryId to ensure proper connection with Operations
-      const rawQueryId = queryForMessage.queryId || queryForMessage.id;
-      const chatQueryId = extractNumericQueryId(rawQueryId);
-      
-      console.log(`🔧 Credit Dashboard: Query ID conversion`, {
-        originalId: rawQueryId,
-        extractedNumericId: chatQueryId,
-        appNo: queryForMessage.appNo
-      });
-      
-      // Validate that this is actually a credit team query
-      const queryData = queryForMessage as any; // Type assertion for validation
-      if (!queryData.markedForTeam || queryData.markedForTeam !== 'credit') {
-        console.warn('⚠️ Credit Dashboard: Attempting to send message to non-credit query', {
-          rawQueryId,
-          numericQueryId: chatQueryId,
-          markedForTeam: queryData.markedForTeam,
-          team: queryData.team,
-          sendToCredit: queryData.sendToCredit
-        });
-      }
-      
-      console.log(`📤 Credit Dashboard: Sending message to NUMERIC queryId: ${chatQueryId} (was: ${rawQueryId}) (App: ${queryForMessage.appNo})`);
-      console.log('📋 Message details:', {
-        rawQueryId,
-        numericQueryId: chatQueryId,
-        appNo: queryForMessage.appNo,
-        markedForTeam: queryData.markedForTeam,
-        messageLength: newMessage.length,
-        sender: user?.name || 'Credit Team'
-      });
-      
-      // Extra validation: Don't send to sales queries
-      if (queryData.markedForTeam === 'sales' || queryData.team === 'sales') {
-        console.error('🚨 Credit Dashboard: BLOCKED - Attempting to send credit message to sales query!');
-        showSuccessMessage('❌ Error: Cannot send message to sales query. Please select a credit query.');
-        return;
-      }
-      
-      const messagePayload = {
-        message: newMessage,
-        sender: user?.name || 'Credit Team',
-        senderRole: 'credit',
-        team: 'Credit',
-        queryId: chatQueryId.toString() // Include numeric queryId for validation
-      };
-      
-      console.log('📤 Sending payload:', messagePayload);
+      // Use queryId for proper chat isolation
+      const chatQueryId = selectedQuery.queryId || selectedQuery.id.toString();
+      console.log(`📤 Sending message to query ${chatQueryId}`);
       
       const response = await fetch(`/api/queries/${chatQueryId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(messagePayload),
+        body: JSON.stringify({
+          message: newMessage,
+          sender: user?.name || 'credit Team',
+          senderRole: 'credit',
+          team: 'credit',
+          queryId: chatQueryId // Include queryId in body for validation
+        }),
       });
 
-      console.log(`📬 Response status: ${response.status} ${response.statusText}`);
-
       if (response.ok) {
-        const responseData = await response.json();
-        console.log('✅ Credit message sent successfully:', responseData);
-        
-        // Clear input immediately
         setNewMessage('');
-        
-        // Reload messages from server to show the stored message
-        // This ensures persistence and that operations team can see it too
-        setTimeout(() => {
-          console.log('🔄 Reloading messages after successful send...');
-          loadChatMessages(chatQueryId); // chatQueryId is already numeric
-        }, 300);
-        
-        showSuccessMessage('✅ Message sent successfully! Operations team will see this message. 📤');
+        loadChatMessages(chatQueryId);
+        showSuccessMessage('Message sent! 📤');
       } else {
         const errorData = await response.json();
-        console.error('❌ Error response:', errorData);
         showSuccessMessage(`❌ Error: Failed to send message. ${errorData.error}`);
       }
     } catch (error) {
-      console.error('💥 Error sending message:', error);
+      console.error('Error sending message:', error);
       showSuccessMessage('❌ Error: Failed to send message. Please try again.');
     }
   };
@@ -1041,7 +909,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
     return (
       <div className="flex justify-center items-center py-12">
         <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
           <span className="text-gray-600">Loading credit queries...</span>
         </div>
       </div>
@@ -1057,7 +925,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         </div>
         <button
           onClick={() => refetch()}
-          className="text-blue-600 hover:text-blue-800 font-medium"
+          className="text-green-600 hover:text-green-800 font-medium"
         >
           Try Again
         </button>
@@ -1069,7 +937,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
     <div className="h-full w-full bg-white overflow-hidden shadow-xl rounded-lg max-w-6xl mx-auto">
       {/* Success Message */}
       {showSuccess && (
-        <div className="fixed top-5 right-5 bg-blue-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-transform">
+        <div className="fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 transition-transform">
           {successMessage}
         </div>
       )}
@@ -1082,7 +950,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <h1 className="text-xl font-bold text-gray-800">
-                  Credit Query Applications
+                  credit Query Applications
                   {newQueryCount > 0 && (
                     <span className="ml-2 animate-bounce bg-red-500 text-white text-xs px-2 py-1 rounded-full">
                       +{newQueryCount} NEW
@@ -1105,18 +973,18 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                   Last updated: {formatLastUpdated()}
                 </span>
                 {isRefreshing && (
-                  <span className="text-xs text-blue-600 flex items-center">
+                  <span className="text-xs text-green-600 flex items-center">
                     <FaSync className="h-3 w-3 animate-spin mr-1" />
                     Refreshing...
                   </span>
                 )}
               </div>
-        <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
                 <button 
                   onClick={toggleAutoRefresh}
                   className={`text-xs px-3 py-1 rounded-full transition-colors ${
                     autoRefresh 
-                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200' 
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -1132,14 +1000,14 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
             {/* Search */}
             <div className="mt-4 relative">
               <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
+              <input
+                type="text"
                 placeholder="Search applications..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black font-bold bg-white"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-black font-bold bg-white"
                 style={{ color: '#000000', backgroundColor: '#ffffff', fontWeight: '700' }}
-            />
+              />
             </div>
           </div>
 
@@ -1149,7 +1017,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
               <div className="text-center py-12 text-gray-500">
                 <FaComments className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                 <p>No credit queries found</p>
-                <p className="text-xs mt-2">Queries marked for Credit team will appear here</p>
+                <p className="text-xs mt-2">Queries marked for credit team will appear here</p>
               </div>
             ) : (
               filteredApplications.map((appNo) => {
@@ -1162,13 +1030,13 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                   <div 
                     key={appNo} 
                     onClick={() => handleSelectApplication(appNo)}
-                    className="p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors duration-200 relative shadow-sm"
+                    className="p-4 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-green-50 hover:border-green-400 transition-colors duration-200 relative shadow-sm"
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h2 className="text-lg font-semibold text-gray-800">{appNo}</h2>
-                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
+                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
                             {totalQueries} {totalQueries === 1 ? 'Query' : 'Queries'}
                           </span>
                         </div>
@@ -1192,13 +1060,13 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                             </span>
                           )}
                         </div>
-      </div>
-      
+                      </div>
+                      
                       <div className="flex flex-col items-end space-y-2">
                         <span className={`text-sm font-medium px-3 py-1 rounded-full ${
                           activeQueries > 0 
                             ? 'bg-orange-100 text-orange-700' 
-                            : 'bg-blue-100 text-blue-700'
+                            : 'bg-green-100 text-green-700'
                         }`}>
                           {activeQueries > 0 ? '🔴 Active' : '🟢 Resolved'}
                         </span>
@@ -1239,15 +1107,15 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                 </div>
               </div>
             </div>
-        </div>
+          </div>
           
           {/* Query List */}
           <div className="flex-grow overflow-y-auto p-4 space-y-3">
             {appQueries.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <p>No queries found for this application</p>
-        </div>
-      ) : (
+              </div>
+            ) : (
               appQueries.map((query, index) => (
                 <div key={`credit-query-${query.id}-${index}`} className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   <div 
@@ -1255,112 +1123,112 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                     className="cursor-pointer"
                   >
                     <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <span className="font-bold text-gray-700 text-lg">
-                    Query {query.queryIndex}
-                  </span>
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                    query.status === 'pending' ? 'bg-orange-100 text-orange-800' :
-                          'bg-blue-100 text-blue-800'
-                  }`}>
-                    {query.status === 'pending' ? 'Pending' : 'Resolved'}
-                  </span>
-                </div>
-              </div>
-              
+                      <div className="flex items-center space-x-3">
+                        <span className="font-bold text-gray-700 text-lg">
+                          Query {query.queryIndex}
+                        </span>
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          query.status === 'pending' ? 'bg-orange-100 text-orange-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {query.status === 'pending' ? 'Pending' : 'Resolved'}
+                        </span>
+                      </div>
+                    </div>
+                    
                     {/* Query Details */}
-              <div className="mt-3 p-4 bg-slate-50 rounded-lg">
-                <p className="text-gray-700 text-sm font-bold">
-                  {query.queryText || 'No query text available'}
-                </p>
-              </div>
-              
-              {/* Query Info Grid with TAT */}
-              <div className="mt-4 grid grid-cols-3 gap-4 text-xs">
-                <div className="text-gray-500">
-                  <span className="font-medium text-gray-700">Submitted:</span><br/>
-                  <span className="text-gray-600">{query.submittedBy}</span>
-                </div>
-                <div className="text-gray-500">
-                  <span className="font-medium text-gray-700">TAT:</span><br/>
-                  <RealTimeTATDisplay submittedAt={query.submittedAt} />
-                </div>
-                <div className="text-gray-500">
-                  <span className="font-medium text-gray-700">Date:</span><br/>
-                  <span className="text-gray-600">{new Date(query.submittedAt).toLocaleDateString()}</span>
-                </div>
-              </div>
-              
-              {/* Credit Action Buttons */}
-              {query.status === 'pending' && (
-                <div className="mt-4 flex items-center space-x-2">
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log('🟢 APPROVED button clicked for query:', {
-                        id: query.id,
-                        appNo: query.appNo,
-                        queryId: query.queryId,
-                        status: query.status
-                      });
-                      setSelectedQuery(query);
-                      handleAction('approve');
-                    }}
-                    className="px-4 py-2 text-sm font-bold text-green-900 bg-green-200 border border-green-400 rounded-full hover:bg-green-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                  >
-                    Approved
-                  </button>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log('🔵 OTC button clicked for query:', {
-                        id: query.id,
-                        appNo: query.appNo,
-                        queryId: query.queryId,
-                        status: query.status
-                      });
-                      setSelectedQuery(query);
-                      handleAction('otc');
-                    }}
-                    className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-200 border border-blue-400 rounded-full hover:bg-blue-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                  >
-                    OTC
-                  </button>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log('🟠 DEFERRAL button clicked for query:', {
-                        id: query.id,
-                        appNo: query.appNo,
-                        queryId: query.queryId,
-                        status: query.status
-                      });
-                      setSelectedQuery(query);
-                      handleAction('deferral');
-                    }}
-                    className="px-4 py-2 text-sm font-bold text-orange-900 bg-orange-200 border border-orange-400 rounded-full hover:bg-orange-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                  >
-                    Deferral
-                  </button>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log('🟣 WAIVER button clicked for query:', {
-                        id: query.id,
-                        appNo: query.appNo,
-                        queryId: query.queryId,
-                        status: query.status
-                      });
-                      setSelectedQuery(query);
-                      handleAction('waiver');
-                    }}
-                    className="px-4 py-2 text-sm font-bold text-purple-900 bg-purple-200 border border-purple-400 rounded-full hover:bg-purple-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
-                  >
-                    Waiver
-                  </button>
-                </div>
-              )}
-              
+                    <div className="mt-3 p-4 bg-slate-50 rounded-lg">
+                      <p className="text-gray-700 text-sm font-bold">
+                        {query.queryText || 'No query text available'}
+                      </p>
+                    </div>
+                    
+                    {/* Query Info Grid with TAT */}
+                    <div className="mt-4 grid grid-cols-3 gap-4 text-xs">
+                      <div className="text-gray-500">
+                        <span className="font-medium text-gray-700">Submitted:</span><br/>
+                        <span className="text-gray-600">{query.submittedBy}</span>
+                      </div>
+                      <div className="text-gray-500">
+                        <span className="font-medium text-gray-700">TAT:</span><br/>
+                        <RealTimeTATDisplay submittedAt={query.submittedAt} />
+                      </div>
+                      <div className="text-gray-500">
+                        <span className="font-medium text-gray-700">Date:</span><br/>
+                        <span className="text-gray-600">{new Date(query.submittedAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    
+                    {/* credit Action Buttons */}
+                    {query.status === 'pending' && (
+                      <div className="mt-4 flex items-center space-x-2">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log('🟢 APPROVE button clicked for query:', {
+                              id: query.id,
+                              appNo: query.appNo,
+                              queryId: query.queryId,
+                              status: query.status
+                            });
+                            setSelectedQuery(query);
+                            handleAction('approve');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-green-900 bg-green-200 border border-green-400 rounded-full hover:bg-green-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          Approved
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log('🔵 OTC button clicked for query:', {
+                              id: query.id,
+                              appNo: query.appNo,
+                              queryId: query.queryId,
+                              status: query.status
+                            });
+                            setSelectedQuery(query);
+                            handleAction('otc');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-green-900 bg-green-200 border border-green-400 rounded-full hover:bg-green-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          OTC
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log('🟠 DEFERRAL button clicked for query:', {
+                              id: query.id,
+                              appNo: query.appNo,
+                              queryId: query.queryId,
+                              status: query.status
+                            });
+                            setSelectedQuery(query);
+                            handleAction('deferral');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-orange-900 bg-orange-200 border border-orange-400 rounded-full hover:bg-orange-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          Deferral
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log('🟣 WAIVER button clicked for query:', {
+                              id: query.id,
+                              appNo: query.appNo,
+                              queryId: query.queryId,
+                              status: query.status
+                            });
+                            setSelectedQuery(query);
+                            handleAction('waiver');
+                          }}
+                          className="px-4 py-2 text-sm font-bold text-purple-900 bg-purple-200 border border-purple-400 rounded-full hover:bg-purple-300 transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          Waiver
+                        </button>
+                      </div>
+                    )}
+                    
                   </div>
                 </div>
               ))
@@ -1400,7 +1268,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
               branchCode={selectedQuery.branchCode}
               appNo={selectedQuery.appNo}
               compact={false}
-              className="bg-blue-50 border-blue-200"
+              className="bg-green-50 border-green-200"
             />
           </div>
           
@@ -1423,13 +1291,13 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                className="flex-1 px-4 py-2 bg-white border-2 border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black font-bold"
+                className="flex-1 px-4 py-2 bg-white border-2 border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-black font-bold"
                 style={{ color: '#000000', backgroundColor: '#ffffff', fontWeight: '700' }}
               />
               <button
                 onClick={handleSendMessage}
                 disabled={!newMessage.trim()}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <span className="hidden sm:inline">Send</span>
                 <FaPaperPlane className="h-4 w-4 ml-0 sm:ml-2" />
@@ -1439,24 +1307,24 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
         </div>
       )}
 
-      {/* Credit Action Modal */}
+      {/* credit Action Modal */}
       {showActionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
             <h3 className="text-lg font-bold mb-4 text-black">
-              {actionType === 'approve' && 'Approve Query - Credit Team'}
-              {actionType === 'deferral' && 'Deferral Action - Credit Team'}
-              {actionType === 'otc' && 'OTC Action - Credit Team'}
-              {actionType === 'waiver' && 'Waiver Query - Credit Team'}
+              {actionType === 'approve' && 'Approve Query - credit Team'}
+              {actionType === 'deferral' && 'Deferral Action - credit Team'}
+              {actionType === 'otc' && 'OTC Action - credit Team'}
+              {actionType === 'waiver' && 'Waiver Query - credit Team'}
             </h3>
             
             <div className="space-y-4">
               {/* Display credit user name for all actions */}
               <div>
-                <label className="block text-sm font-bold text-black">Credit Team Member</label>
+                <label className="block text-sm font-bold text-black">credit Team Member</label>
                 <input
                   type="text"
-                  value={user?.name || 'Credit Team'}
+                  value={user?.name || 'credit Team'}
                   disabled
                   className="mt-1 block w-full pl-3 pr-3 py-3 text-gray-700 bg-gray-100 border-2 border-gray-300 rounded-md font-bold cursor-not-allowed"
                 />
@@ -1477,7 +1345,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                     <option value="">Select approver...</option>
                     <option value="Abhishek Mishra">Abhishek Mishra</option>
                     <option value="Aarti Pujara - Credit Manager">Aarti Pujara - Credit Manager</option>
-                    <option value="Sumit Khari - Sales Manager">Sumit Khari - Sales Manager</option>
+                    <option value="Sumit Khari - credit Manager">Sumit Khari - credit Manager</option>
                     <option value="Rahul Jain">Rahul Jain</option>
                     <option value="Vikram Diwan">Vikram Diwan</option>
                     <option value="Puneet Chadha">Puneet Chadha</option>
@@ -1501,7 +1369,7 @@ export default function CreditQueriesRaised({ searchAppNo }: CreditQueriesRaised
                     <option value="">Select approver...</option>
                     <option value="Abhishek Mishra">Abhishek Mishra</option>
                     <option value="Aarti Pujara - Credit Manager">Aarti Pujara - Credit Manager</option>
-                    <option value="Sumit Khari - Sales Manager">Sumit Khari - Sales Manager</option>
+                    <option value="Sumit Khari - credit Manager">Sumit Khari - credit Manager</option>
                     <option value="Rahul Jain">Rahul Jain</option>
                     <option value="Vikram Diwan">Vikram Diwan</option>
                     <option value="Puneet Chadha">Puneet Chadha</option>
