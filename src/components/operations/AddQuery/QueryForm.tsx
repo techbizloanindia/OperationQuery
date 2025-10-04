@@ -45,7 +45,8 @@ const salesQueries = [
   "Signature missing / Bank account missing / Repayment change",
   "Guarantor details missing / Sign missing / Photo missing",
   "A/C details wrong / Sign missing / Bank stamp missing",
-  "Repayment A/c Banking"
+  "Repayment A/c Banking",
+  "✏️ Write Custom Query"
 ];
 
 const creditQueries = [
@@ -55,7 +56,8 @@ const creditQueries = [
   "Sign missing / Property details wrong / Product mismatch / Property value issue",
   "CIBIL & crime report missing",
   "Property owner details mismatch / Date issue / Product name mismatch & Search report issue / Document missing as per Legal (Credit/Sales overlap)",
-  "Credit condition vetting issue / Condition mismatch between CAM & sanction"
+  "Credit condition vetting issue / Condition mismatch between CAM & sanction",
+  "✏️ Write Custom Query"
 ];
 
 export default function QueryForm({
@@ -69,7 +71,6 @@ export default function QueryForm({
 }: QueryFormProps) {
   const [isQueryDropdownOpen, setIsQueryDropdownOpen] = useState<{[key: number]: boolean}>({});
   const [searchTerms, setSearchTerms] = useState<{[key: number]: string}>({});
-  const [showAllQueries, setShowAllQueries] = useState(false);
   // Track which queries are assigned to which team
   const [usedQueries, setUsedQueries] = useState<{[query: string]: 'Sales' | 'Credit'}>({});
 
@@ -128,6 +129,13 @@ export default function QueryForm({
   };
 
   const handleDropdownSelect = (queryId: number, selectedQuery: string) => {
+    // Check if custom query option is selected
+    if (selectedQuery === "✏️ Write Custom Query") {
+      onCustomQuery(queryId);
+      setIsQueryDropdownOpen(prev => ({ ...prev, [queryId]: false }));
+      return;
+    }
+    
     // Track which team this query is assigned to
     const currentTeam = sendTo[0] as 'Sales' | 'Credit';
     setUsedQueries(prev => ({ ...prev, [selectedQuery]: currentTeam }));
@@ -150,6 +158,11 @@ export default function QueryForm({
     
     // Filter out queries that are already used by the opposite team
     let availableQueries = allQueries.filter(query => {
+      // Always show the custom query option
+      if (query === "✏️ Write Custom Query") {
+        return true;
+      }
+      
       const assignedTeam = usedQueries[query];
       // Show query if it's not assigned to any team, or if it's assigned to the current team
       return !assignedTeam || assignedTeam === currentTeam;
@@ -166,79 +179,58 @@ export default function QueryForm({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-gray-300 overflow-hidden max-w-full mx-auto">
-      {/* Enhanced Responsive Header */}
-      <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-green-600 p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/25 rounded-xl flex items-center justify-center backdrop-blur-sm">
-              <FaPlus className="text-white text-lg sm:text-xl" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-xl sm:text-2xl font-bold text-white">Add New Query</h3>
-              <p className="text-blue-100 text-sm sm:text-base font-medium">Submit to selected team</p>
-            </div>
+    <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+      {/* Compact Header */}
+      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+            <FaPlus className="text-white text-sm" />
           </div>
-          {sendTo.length > 0 && (
-            <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-2 rounded-lg">
-              <span className="text-white font-semibold text-sm">Selected:</span>
-              <span className="text-yellow-200 font-bold text-sm">{sendTo[0]} Team</span>
-            </div>
-          )}
+          <div>
+            <h3 className="text-lg font-semibold text-white">Add New Query</h3>
+            <p className="text-emerald-100 text-xs">Submit to selected team</p>
+          </div>
         </div>
       </div>
       
-      <div className="p-4 sm:p-6 lg:p-8">
-        <form onSubmit={onSubmit} className="space-y-6">
-          {/* Enhanced Team Selection */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-blue-600 font-bold text-sm">1</span>
-              </div>
-              <label className="text-lg font-bold text-gray-800">Select Team</label>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+      <div className="p-4">
+        <form onSubmit={onSubmit} className="space-y-4">
+          {/* Team Selection - Compact Layout */}
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-gray-700">Select Team</label>
+            <div className="grid grid-cols-2 gap-2">
               {availableTeams.map((team) => (
                 <button
                   key={team.id}
                   type="button"
                   onClick={() => handleTeamSelection(team.id)}
-                  className={`p-4 sm:p-5 rounded-xl border-2 transition-all duration-300 text-left hover:shadow-lg ${
+                  className={`p-2 rounded-md border transition-all duration-200 text-left ${
                     sendTo.includes(team.id)
-                      ? 'border-blue-500 bg-gradient-to-r from-blue-50 to-blue-100 shadow-md'
-                      : 'border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400 bg-white'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-base sm:text-lg font-bold ${
-                      team.id === 'Sales' ? 'bg-blue-200 text-blue-700' :
-                      'bg-green-200 text-green-700'
+                  <div className="flex items-center gap-2">
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-xs ${
+                      team.id === 'Sales' ? 'bg-blue-100 text-blue-600' :
+                      'bg-green-100 text-green-600'
                     }`}>
-                      {team.id === 'Sales' ? '🏢' : '💳'}
+                      {team.label.split(' ')[0]}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-base sm:text-lg font-bold text-gray-900 mb-1">
-                        {team.id === 'Sales' ? 'Sales Team' : 'Credit Team'}
-                      </p>
-                      <p className="text-sm sm:text-base font-semibold text-gray-600">
-                        {team.id === 'Sales' ? 'Process & Documents' :
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{team.label.split(' ').slice(1).join(' ')}</p>
+                      <p className="text-xs text-gray-600">
+                        {team.id === 'Sales' ? 'Process & Docs' :
                          'Credit & Finance'}
                       </p>
                     </div>
-                    {sendTo.includes(team.id) && (
-                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                    )}
                   </div>
                 </button>
               ))}
             </div>
           </div>
           
-          
-          {/* Query Input - Simple Layout */}
+          {/* Query Input - Compact Layout */}
           <div className="space-y-3">
             <label className="text-sm font-semibold text-gray-700">Query Details</label>
             
@@ -330,16 +322,23 @@ export default function QueryForm({
                           </div>
                           
                           <div className="max-h-40 overflow-y-auto bg-white">
-                            {getFilteredQueries(query.id).map((teamQuery, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => handleDropdownSelect(query.id, teamQuery)}
-                                className={`w-full p-2 text-left hover:${sendTo[0] === 'Sales' ? 'bg-blue-50' : 'bg-green-50'} border-b border-gray-100 text-xs text-gray-800 transition-colors`}
-                              >
-                                {teamQuery}
-                              </button>
-                            ))}
+                            {getFilteredQueries(query.id).map((teamQuery, idx) => {
+                              const isCustomOption = teamQuery === "✏️ Write Custom Query";
+                              return (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleDropdownSelect(query.id, teamQuery)}
+                                  className={`w-full p-2 text-left transition-colors text-xs ${
+                                    isCustomOption 
+                                      ? 'bg-yellow-50 hover:bg-yellow-100 border-b border-yellow-200 text-yellow-800 font-medium'
+                                      : `hover:${sendTo[0] === 'Sales' ? 'bg-blue-50' : 'bg-green-50'} border-b border-gray-100 text-gray-800`
+                                  }`}
+                                >
+                                  {teamQuery}
+                                </button>
+                              );
+                            })}
                             {getFilteredQueries(query.id).length === 0 && (
                               <div className="p-3 text-center text-gray-500 text-xs bg-white">
                                 {searchTerms[query.id] ? (
@@ -351,23 +350,11 @@ export default function QueryForm({
                             )}
                           </div>
                         </div>
-                      
-                      {/* Custom Option */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onCustomQuery(query.id);
-                          setIsQueryDropdownOpen(prev => ({ ...prev, [query.id]: false }));
-                        }}
-                        className="w-full p-2 text-left hover:bg-yellow-50 border-t border-yellow-200 text-xs font-medium text-yellow-800 transition-colors bg-white"
-                      >
-                        ✏️ Write Custom Query
-                      </button>
                     </div>
                   )}
                 </div>
                 
-                {/* Simple Custom Text Input */}
+                {/* Compact Custom Text Input */}
                 <textarea
                   value={query.text}
                   onChange={(e) => handleQueryChange(query.id, e.target.value)}
@@ -382,7 +369,7 @@ export default function QueryForm({
               </div>
             ))}
             
-            {/* Simple Add Another Query Button */}
+            {/* Compact Add Another Query Button */}
             <button
               type="button"
               onClick={addQuery}
@@ -393,12 +380,12 @@ export default function QueryForm({
             </button>
           </div>
           
-          {/* Simple Submit Button */}
+          {/* Compact Submit Button */}
           <div className="pt-3 border-t border-gray-200">
             <button
               type="submit"
               disabled={isSubmitting || queries.some(q => !q.text.trim())}
-              className="w-full h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-md font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-md font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
             >
               {isSubmitting ? (
                 <>
